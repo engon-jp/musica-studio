@@ -64,6 +64,19 @@ export function detectPitch(buf, sampleRate, opts = {}) {
   return { freq: sampleRate / refined, clarity: cv, rms };
 }
 
+// 単純平均によるダウンサンプリング（ピッチ検出の高速化用。〜1.2kHzの検出には11kHz程度で十分）
+export function downsample(data, factor) {
+  if (factor <= 1) return data;
+  const out = new Float32Array(Math.floor(data.length / factor));
+  for (let i = 0; i < out.length; i++) {
+    let s = 0;
+    const base = i * factor;
+    for (let j = 0; j < factor; j++) s += data[base + j];
+    out[i] = s / factor;
+  }
+  return out;
+}
+
 // 音源バッファからピッチ軌跡を抽出（耳コピ・ハモリ用）
 // data: Float32Array（モノラル）→ [{t, freq, clarity}]（無音/不明瞭は freq:null）
 export function pitchTrack(data, sampleRate, opts = {}) {

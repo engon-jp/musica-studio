@@ -80,8 +80,24 @@ function persist() {
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem('ms-tab'));
-    if (d && d.cells) { bars = d.bars || 2; cells = d.cells; }
+    if (d && d.cells && Object.keys(d.cells).length > 0) {
+      bars = d.bars || 2;
+      cells = d.cells;
+      return;
+    }
   } catch { /* 初回 */ }
+  seedDemo();
+}
+
+// 初回起動時のデモ: きらきら星の単音メロディ（4分音符=4ステップ刻み）
+function seedDemo() {
+  bars = 4;
+  cells = {};
+  const seq = [
+    [0, 4, 1], [4, 4, 1], [8, 5, 3], [12, 5, 3], [16, 5, 5], [20, 5, 5], [24, 5, 3],
+    [32, 5, 1], [36, 5, 1], [40, 5, 0], [44, 5, 0], [48, 4, 3], [52, 4, 3], [56, 4, 1],
+  ];
+  for (const [step, str, fret] of seq) cells[`${step}:${str}`] = fret;
 }
 
 function refresh() {

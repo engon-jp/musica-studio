@@ -37,6 +37,7 @@ export function init(el) {
     <div class="card">
       <div class="row">
         <button class="btn" id="hm-mic">🎙 歌って入力</button>
+        <button class="btn" id="hm-demo">🎁 デモ（きらきら星）</button>
         <button class="btn small" id="hm-clear">クリア</button>
         <label>BPM <input type="number" id="hm-bpm" value="120" min="40" max="240"></label>
         <label>グリッド
@@ -87,6 +88,7 @@ export function init(el) {
 
   const $ = (s) => panel.querySelector(s);
   $('#hm-mic').addEventListener('click', toggleMicInput);
+  $('#hm-demo').addEventListener('click', loadDemoMelody);
   $('#hm-clear').addEventListener('click', () => { melody = []; importMeta = null; refresh(); });
   $('#hm-bpm').addEventListener('change', (e) => { bpm = Number(e.target.value) || 120; });
   $('#hm-grid').addEventListener('change', (e) => { grid = Number(e.target.value); });
@@ -121,6 +123,22 @@ export function receive(key, value) {
   importMeta = { offset: value.offset };
   keyAuto = true;
   panel.querySelector('#hm-status').textContent = `耳コピから ${melody.length} 音を受信（クオンタイズ済み）`;
+  refresh();
+}
+
+// デモメロディ: きらきら星（キーC・BPM100）
+function loadDemoMelody() {
+  bpm = 100;
+  panel.querySelector('#hm-bpm').value = bpm;
+  const seq = [
+    [60, 0, 1], [60, 1, 1], [67, 2, 1], [67, 3, 1], [69, 4, 1], [69, 5, 1], [67, 6, 2],
+    [65, 8, 1], [65, 9, 1], [64, 10, 1], [64, 11, 1], [62, 12, 1], [62, 13, 1], [60, 14, 2],
+  ];
+  melody = seq.map(([midi, start, dur]) => ({ midi, start, dur }));
+  importMeta = null;
+  keyAuto = true;
+  panel.querySelector('#hm-status').textContent =
+    'デモ: きらきら星を読み込みました。キーを自動推定してハモリを生成 → ▶再生で聴けます。チェックでハモリを増減';
   refresh();
 }
 
@@ -186,7 +204,7 @@ function drawRoll(playheadBeat = null) {
     c.style.height = gm.H / gm.dpr + 'px';
   }
   const g = c.getContext('2d');
-  g.fillStyle = '#0d0f16';
+  g.fillStyle = '#38324a';
   g.fillRect(0, 0, gm.W, gm.H);
 
   const yOf = (midi) => gm.ruler + (gm.hi - midi) * gm.rowH;

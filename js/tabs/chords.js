@@ -5,11 +5,65 @@ import { getShape, shapeToMidis, capoSuggestions, STANDARD_TUNING } from '../cho
 import { strum } from '../synth.js';
 import { resumeCtx, getCtx } from '../audio-engine.js';
 
+// サンプル曲（歌詞・旋律とも著作権保護期間満了のもののみ）
+const SAMPLE_SONGS = [
+  {
+    id: 'sample-furusato',
+    title: '故郷（ふるさと）',
+    transpose: 0,
+    capo: 0,
+    text: `[C]兎追いし [F]かの[C]山
+[C]小鮒釣りし [G7]かの[C]川
+[F]夢は[C]今も めぐ[G7]りて
+[C]忘れ[F]がたき [G7]故[C]郷
+
+[C]如何にいます [F]父[C]母
+[C]恙なしや [G7]友が[C]き
+[F]雨に[C]風に つけ[G7]ても
+[C]思い[F]出づる [G7]故[C]郷`,
+  },
+  {
+    id: 'sample-akatombo',
+    title: '赤とんぼ 〜カポ提案のデモ',
+    transpose: 0,
+    capo: 0,
+    text: `[Eb]夕焼小焼の [Ab]赤と[Eb]んぼ
+[Cm]負われて見たのは [Bb7]いつの[Eb]日か
+
+※E♭キーはバレーコードだらけ。下の「カポ位置の提案」を見ると
+　カポ1で D・G・Bm・A7、カポ3で C・F・Am・G7 などの
+　楽なフォームに変わります（好きな行をタップ！）`,
+  },
+  {
+    id: 'sample-amazing-grace',
+    title: 'Amazing Grace 〜移調のデモ',
+    transpose: 0,
+    capo: 0,
+    text: `[G]Amazing [G7]grace! How [C]sweet the [G]sound
+That [G]saved a [Em]wretch like [D]me!
+[G]I once was [G7]lost, but [C]now am [G]found,
+Was [Em]blind, but [D]now I [G]see.
+
+※「♭−1 / ♯＋1」で自分の声に合うキーへ。
+　「移調をテキストに反映」で歌詞ごと書き換えもできます`,
+  },
+  {
+    id: 'sample-canon',
+    title: 'カノン進行 〜再生のデモ',
+    transpose: 0,
+    capo: 0,
+    text: `[C] [G] [Am] [Em] [F] [C] [F] [G]
+
+「▶ コード進行を再生」でギター音のストラムが流れます。
+下のコードダイアグラムをタップしても1つずつ鳴ります`,
+  },
+];
+
 let panel;
 let state = {
-  songId: null,
-  title: 'サンプル曲',
-  text: '[C]ドドソソ[F]ララ[C]ソ　[F]ファファ[C]ミミ[G7]レレ[C]ド\n\n[Am]ソソファファ[Em]ミミレ　[F]ソソファファ[C]ミミ[G7]レ',
+  songId: 'sample-furusato',
+  title: SAMPLE_SONGS[0].title,
+  text: SAMPLE_SONGS[0].text,
   transpose: 0,
   capo: 0,
   flat: false,
@@ -74,6 +128,7 @@ export function init(el) {
     </div>
   `;
 
+  seedSamples();
   loadCurrent();
   refreshSongSelect();
   bind();
@@ -114,10 +169,18 @@ const loadSongs = () => JSON.parse(localStorage.getItem('ms-songs') || '[]');
 const saveSongs = (s) => localStorage.setItem('ms-songs', JSON.stringify(s));
 const persistCurrent = () => localStorage.setItem('ms-chords-current', JSON.stringify(state));
 
+// 初回起動時にサンプル曲を登録（既存の曲がある場合は何もしない）
+function seedSamples() {
+  if (loadSongs().length === 0) saveSongs(SAMPLE_SONGS.map((s) => ({ ...s })));
+}
+
 function loadCurrent() {
   try {
     const saved = JSON.parse(localStorage.getItem('ms-chords-current'));
-    if (saved && typeof saved.text === 'string') state = { ...state, ...saved };
+    // 旧バージョンの初期サンプルが残っていたら新サンプルに差し替え
+    if (saved && typeof saved.text === 'string' && !saved.text.startsWith('[C]ドドソソ')) {
+      state = { ...state, ...saved };
+    }
   } catch { /* 初回 */ }
   panel.querySelector('#ch-title').value = state.title;
   panel.querySelector('#ch-text').value = state.text;

@@ -1,18 +1,19 @@
-/* Música Studio — 共通スタイル（ダークテーマ・モバイル対応） */
+/* Música Studio — 共通スタイル（あたたかいライトテーマ・丸ゴシック・モバイル対応） */
 
 :root {
-  --bg: #12141c;
-  --bg-panel: #1b1e2a;
-  --bg-input: #252938;
-  --border: #333a4f;
-  --text: #e8eaf2;
-  --text-dim: #9aa1b5;
-  --accent: #5b8cff;
-  --accent-soft: rgba(91, 140, 255, 0.18);
-  --green: #3ecf8e;
-  --red: #ff6b6b;
-  --yellow: #ffd166;
-  --radius: 12px;
+  --bg: #f6f1ea;
+  --bg-panel: #fffdf9;
+  --bg-input: #f1eae0;
+  --border: #e5dbcc;
+  --text: #46403a;
+  --text-dim: #9b8f80;
+  --accent: #e0795a;
+  --accent-soft: rgba(224, 121, 90, 0.14);
+  --green: #4daf7c;
+  --red: #d95d5d;
+  --yellow: #e0a93e;
+  --radius: 16px;
+  --shadow: 0 2px 12px rgba(170, 130, 95, 0.10);
 }
 
 * { box-sizing: border-box; }
@@ -22,7 +23,7 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  font-family: ui-rounded, "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -30,7 +31,7 @@ html, body {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(18, 20, 28, 0.92);
+  background: rgba(246, 241, 234, 0.92);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
   padding: env(safe-area-inset-top) 16px 0;
@@ -40,14 +41,14 @@ html, body {
   margin: 0;
   padding: 10px 0 6px;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .tab-nav {
   display: flex;
   gap: 4px;
   overflow-x: auto;
-  padding-bottom: 0;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
@@ -60,15 +61,16 @@ html, body {
   border-bottom: 3px solid transparent;
   color: var(--text-dim);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 8px 14px 10px;
   cursor: pointer;
   white-space: nowrap;
   font-family: inherit;
+  border-radius: 10px 10px 0 0;
 }
 
 .tab-nav button.active {
-  color: var(--text);
+  color: var(--accent);
   border-bottom-color: var(--accent);
 }
 
@@ -78,12 +80,13 @@ main {
   padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
 }
 
-.tab-panel h2 { font-size: 16px; color: var(--text-dim); margin: 8px 0; }
+.tab-panel h2 { font-size: 15px; color: var(--text-dim); margin: 8px 0; font-weight: 700; }
 
 .card {
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
   padding: 16px;
   margin-bottom: 16px;
 }
@@ -97,13 +100,13 @@ main {
 
 .row + .row { margin-top: 10px; }
 
-label { font-size: 13px; color: var(--text-dim); }
+label { font-size: 13px; color: var(--text-dim); font-weight: 600; }
 
 select, input[type="number"], input[type="text"], textarea {
   background: var(--bg-input);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 8px 10px;
   font-size: 15px;
   font-family: inherit;
@@ -127,26 +130,30 @@ button.btn {
   background: var(--bg-input);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 9px 16px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   font-family: inherit;
   min-height: 40px;
+  transition: transform 0.06s ease;
 }
 
-button.btn:active { transform: scale(0.97); }
+button.btn:active { transform: scale(0.96); }
 
 button.btn.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+  box-shadow: 0 2px 8px rgba(224, 121, 90, 0.35);
 }
 
 button.btn.danger { color: var(--red); }
 
 button.btn.small { padding: 5px 10px; min-height: 30px; font-size: 13px; }
+
+button.btn:disabled { opacity: 0.45; cursor: default; }
 
 .hint { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
 
@@ -195,17 +202,17 @@ button.btn.small { padding: 5px 10px; min-height: 30px; font-size: 13px; }
   min-width: 52px;
   text-align: center;
   padding: 8px 6px;
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--bg-input);
   color: var(--text);
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
   font-family: inherit;
   font-size: 14px;
 }
 
-.tuner-strings .string-btn small { display: block; font-weight: 400; color: var(--text-dim); font-size: 11px; }
+.tuner-strings .string-btn small { display: block; font-weight: 500; color: var(--text-dim); font-size: 11px; }
 
 .tuner-strings .string-btn.near { border-color: var(--accent); background: var(--accent-soft); }
 
@@ -213,23 +220,11 @@ button.btn.small { padding: 5px 10px; min-height: 30px; font-size: 13px; }
 
 /* ---- コード ---- */
 
-.chord-sheet {
-  font-family: "SF Mono", Menlo, Consolas, monospace;
-  font-size: 14px;
-  line-height: 1.5;
-  overflow-x: auto;
-  white-space: pre;
-}
-
-.chord-sheet .chord-line { color: var(--accent); font-weight: 700; }
-
-.chord-sheet .chord-line .bad { color: var(--red); }
-
 .cline { display: flex; flex-wrap: wrap; align-items: flex-end; margin: 3px 0; }
 .seg { display: inline-flex; flex-direction: column; }
-.seg .c { color: var(--accent); font-weight: 700; font-size: 13px; min-height: 19px; padding-right: 8px; white-space: pre; }
+.seg .c { color: var(--accent); font-weight: 800; font-size: 13px; min-height: 19px; padding-right: 8px; white-space: pre; }
 .seg .c .bad { color: var(--red); }
-.seg .t { white-space: pre-wrap; font-size: 15px; line-height: 1.5; }
+.seg .t { white-space: pre-wrap; font-size: 15px; line-height: 1.55; }
 .lyric-only { font-size: 15px; line-height: 1.7; }
 .sheet-space { height: 16px; }
 
@@ -239,9 +234,15 @@ button.btn.small { padding: 5px 10px; min-height: 30px; font-size: 13px; }
   gap: 10px;
 }
 
-.chord-diagrams figure { margin: 0; text-align: center; }
+.chord-diagrams figure {
+  margin: 0;
+  text-align: center;
+  background: var(--bg-input);
+  border-radius: 12px;
+  padding: 6px 4px;
+}
 
-.chord-diagrams figcaption { font-size: 13px; font-weight: 700; margin-top: 2px; }
+.chord-diagrams figcaption { font-size: 13px; font-weight: 800; margin-top: 2px; }
 
 .chip {
   display: inline-block;
@@ -251,20 +252,21 @@ button.btn.small { padding: 5px 10px; min-height: 30px; font-size: 13px; }
   padding: 3px 12px;
   font-size: 13px;
   cursor: pointer;
+  font-weight: 600;
 }
 
-.chip.active { border-color: var(--accent); background: var(--accent-soft); }
+.chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 
 table.capo-table { border-collapse: collapse; width: 100%; font-size: 13px; }
 table.capo-table th, table.capo-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; }
-table.capo-table tr.best td { color: var(--green); font-weight: 700; }
+table.capo-table tr.best td { color: var(--green); font-weight: 800; }
 
 /* ---- 耳コピ ---- */
 
 canvas.wave, canvas.spec {
   width: 100%;
-  border-radius: 8px;
-  background: #0d0f16;
+  border-radius: 12px;
+  background: #38324a;
   display: block;
   touch-action: none;
 }
@@ -288,9 +290,11 @@ canvas.wave, canvas.spec {
 .note-seq .note-chip {
   display: inline-block;
   background: var(--accent-soft);
-  border-radius: 6px;
+  color: var(--accent);
+  border-radius: 8px;
   padding: 1px 7px;
   margin: 1px 2px;
+  font-weight: 700;
 }
 
 .cand-list { list-style: none; margin: 0; padding: 0; }
@@ -300,15 +304,14 @@ canvas.wave, canvas.spec {
 /* ---- ハモリ ---- */
 
 canvas.piano-roll {
-  width: 100%;
-  border-radius: 8px;
-  background: #0d0f16;
+  border-radius: 12px;
+  background: #38324a;
   display: block;
   touch-action: none;
 }
 
 .voice-mixer .row { align-items: center; }
-.voice-label { min-width: 110px; font-size: 13px; font-weight: 600; }
+.voice-label { min-width: 110px; font-size: 13px; font-weight: 700; }
 
 /* ---- タブ譜 ---- */
 
@@ -323,16 +326,17 @@ table.tab-grid td {
   font-size: 13px;
   color: var(--text);
   user-select: none;
+  background: var(--bg-panel);
 }
 table.tab-grid td.beat-start { border-left: 2px solid var(--text-dim); }
 table.tab-grid td.active { background: var(--accent-soft); outline: 2px solid var(--accent); }
-table.tab-grid td.playing { background: rgba(62, 207, 142, 0.25); }
-table.tab-grid th { font-size: 12px; color: var(--text-dim); padding-right: 6px; font-weight: 400; }
+table.tab-grid td.playing { background: rgba(77, 175, 124, 0.22); }
+table.tab-grid th { font-size: 12px; color: var(--text-dim); padding-right: 6px; font-weight: 500; }
 
 pre.ascii-tab {
   background: var(--bg-input);
   padding: 12px;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow-x: auto;
   font-size: 13px;
   line-height: 1.4;
@@ -347,6 +351,6 @@ pre.ascii-tab {
 @media print {
   .app-header, .no-print { display: none !important; }
   body { background: #fff; color: #000; }
-  .card { border: none; background: #fff; }
+  .card { border: none; background: #fff; box-shadow: none; }
   pre.ascii-tab { background: #fff; color: #000; }
 }

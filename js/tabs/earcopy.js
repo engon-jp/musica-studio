@@ -1,7 +1,7 @@
 // 耳コピタブ: 音源再生（A-Bループ・ピッチ保持速度変更・帯域フィルタ）＋解析（メロディ検出・コード候補）
 
 import { getCtx, resumeCtx, decodeFile, toMono } from '../audio-engine.js';
-import { pitchTrack, framesToNotes } from '../pitch.js';
+import { pitchTrack, framesToNotes, downsample } from '../pitch.js';
 import { midiToName } from '../theory.js';
 import { chromaOf, chordCandidates, chordSegments } from '../dsp.js';
 
@@ -29,6 +29,7 @@ export function init(el) {
     <div class="card">
       <div class="row">
         <button class="btn primary" id="ec-file-btn">🎵 音源ファイルを開く</button>
+        <button class="btn" id="ec-demo">🎁 デモ音源で試す</button>
         <input type="file" id="ec-file" accept="audio/*" hidden>
         <span class="hint" id="ec-file-name">mp3 / m4a / wav / aacなど</span>
       </div>
@@ -96,6 +97,7 @@ export function init(el) {
   const $ = (s) => panel.querySelector(s);
   $('#ec-file-btn').addEventListener('click', () => $('#ec-file').click());
   $('#ec-file').addEventListener('change', onFile);
+  $('#ec-demo').addEventListener('click', makeDemo);
   $('#ec-play').addEventListener('click', togglePlay);
   $('#ec-to-a').addEventListener('click', () => { if (audioEl) audioEl.currentTime = loopA ?? 0; });
   $('#ec-set-a').addEventListener('click', () => { loopA = audioEl.currentTime; if (loopB !== null && loopB <= loopA) loopB = null; updateAB(); });
@@ -128,6 +130,11 @@ export function init(el) {
 async function onFile(e) {
   const file = e.target.files[0];
   if (!file) return;
+  await loadAudioFile(file);
+  e.target.value = '';
+}
+
+async function loadAudioFile(file) {
   fileName = file.name;
   panel.querySelector('#ec-file-name').textContent = '読み込み中…';
   try {
@@ -149,7 +156,70 @@ async function onFile(e) {
   } catch (err) {
     panel.querySelector('#ec-file-name').textContent = '読み込み失敗: ' + err.message;
   }
-  e.target.value = '';
+}
+
+// ---- デモ音源（その場で合成: 前半きらきら星メロディ／後半 C→Am→F→G）----
+
+async function makeDemo() {
+  const sr = 44100;
+  const mel = [
+    [261.63, 0.4], [261.63, 0.4], [392.0, 0.4], [392.0, 0.4],
+    [440.0, 0.4], [440.0, 0.4], [392.0, 0.8],
+    [349.23, 0.4], [349.23, 0.4], [329.63, 0.4], [329.63, 0.4],
+    [293.66, 0.4], [293.66, 0.4], [261.63, 0.8],
+  ];
+  const chords = [
+    [130.81, 164.81, 196.0],  // C
+    [110.0, 130.81, 164.81],  // Am
+    [174.61, 220.0, 261.63],  // F
+    [196.0, 246.94, 293.66],  // G
+  ];
+  const total = mel.reduce((s, n) => s + n[1], 0) + chords.length * 2.0;
+  const data = new Float32Array(Math.ceil(sr * total));
+  let pos = 0;
+  for (const [f, d] of mel) {
+    // 音符間に100msの隙間を置く（同音連打が1音に融合しないように）
+    const len = Math.floor(sr * (d - 0.1));
+    for (let i = 0; i < len; i++) {
+      const env = Math.min(1, i / (sr * 0.02)) * Math.exp(-i / (sr * 0.7));
+      data[pos + i] = env * (0.5 * Math.sin((2 * Math.PI * f * i) / sr) + 0.12 * Math.sin((2 * Math.PI * 2 * f * i) / sr));
+    }
+    pos += Math.floor(sr * d);
+  }
+  for (const tones of chords) {
+    const len = sr * 2;
+    for (const f of tones) {
+      for (let h = 1; h <= 3; h++) {
+        for (let i = 0; i < len; i++) {
+          const env = Math.min(1, i / (sr * 0.02)) * Math.exp(-i / (sr * 1.2));
+          data[pos + i] += env * (0.22 / h) * Math.sin((2 * Math.PI * f * h * i) / sr);
+        }
+      }
+    }
+    pos += len;
+  }
+  const file = new File([encodeWav(data, sr)], 'デモ音源.wav', { type: 'audio/wav' });
+  await loadAudioFile(file);
+  // 前半（メロディ部分）に A-B を自動設定
+  loopA = 0;
+  loopB = 6.4;
+  updateAB();
+  panel.querySelector('#ec-file-name').textContent =
+    'デモ: 前半きらきら星のA-B設定済み→🎼メロディ検出！ 後半(6.4s〜)はC→Am→F→G各2秒→A-Bを後半にドラッグして🎸コード候補';
+}
+
+function encodeWav(f32, sr) {
+  const pcm = new Int16Array(f32.length);
+  for (let i = 0; i < f32.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, Math.round(f32[i] * 32767)));
+  const buf = new ArrayBuffer(44 + pcm.length * 2);
+  const v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + pcm.length * 2, true); w(8, 'WAVE');
+  w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, pcm.length * 2, true);
+  new Int16Array(buf, 44).set(pcm);
+  return buf;
 }
 
 function ensureGraph() {
@@ -257,7 +327,7 @@ function drawWave() {
   if (!canvas) return;
   const g = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
-  g.fillStyle = '#0d0f16';
+  g.fillStyle = '#38324a';
   g.fillRect(0, 0, W, H);
   if (!peaks || !audioBuffer) return;
   const dur = audioBuffer.duration;
@@ -308,7 +378,7 @@ function waveX2Time(ev) {
 function onWaveDown(ev) {
   if (!audioBuffer) return;
   const canvas = panel.querySelector('#ec-wave');
-  canvas.setPointerCapture(ev.pointerId);
+  try { canvas.setPointerCapture(ev.pointerId); } catch { /* 合成イベント等では不可 */ }
   const rect = canvas.getBoundingClientRect();
   const x = ((ev.clientX - rect.left) / rect.width) * canvas.width;
   dragStart = { x, curX: x, t: waveX2Time(ev), moved: false, clientX: ev.clientX };
@@ -374,7 +444,7 @@ function drawSpec() {
   const W = canvas.width, H = canvas.height;
   const colW = 2 * dpr;
   g.drawImage(canvas, -colW, 0);
-  g.fillStyle = '#0d0f16';
+  g.fillStyle = '#38324a';
   g.fillRect(W - colW, 0, colW, H);
 
   const bins = new Uint8Array(analyser.frequencyBinCount);
@@ -413,7 +483,11 @@ function analyzeMelody() {
   busy('メロディ解析中…');
   setTimeout(() => {
     const { a, data, sr } = analysisRange();
-    const frames = pitchTrack(data, sr, { clarityThreshold: 0.85, minFreq: 70, maxFreq: 1200 });
+    // 〜11kHzに間引いてMPMを約60倍高速化（半音量子化には十分な精度）
+    const factor = Math.max(1, Math.floor(sr / 11025));
+    const frames = pitchTrack(downsample(data, factor), sr / factor, {
+      windowSize: 512, hopSize: 256, clarityThreshold: 0.85, minFreq: 70, maxFreq: 1200,
+    });
     const notes = framesToNotes(frames);
     lastNotes = { notes, offset: a };
     const out = panel.querySelector('#ec-melody-out');
