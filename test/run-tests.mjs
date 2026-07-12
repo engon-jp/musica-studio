@@ -205,5 +205,30 @@ console.log('--- DSP: FFT・クロマ・コード候補 ---');
   ok(g7.slice(0, 2).some((c) => c.chord === 'G7'), `G-B-D-F → 上位2候補に G7（got ${g7.map((c) => c.chord).join(',')}）`);
 }
 
+console.log('--- MIDI 書き出し ---');
+{
+  const { buildMidi } = await import('../js/midi.js');
+  const bytes = buildMidi(
+    [{ name: 'Mel', notes: [{ midi: 60, start: 0, dur: 1 }, { midi: 64, start: 1, dur: 0.5 }] }],
+    120
+  );
+  const s = (o, n) => String.fromCharCode(...bytes.slice(o, o + n));
+  // ヘッダ: MThd(4) + 長さ4 + format2 + ntrks2 + division2 = 14バイト
+  eq(s(0, 4), 'MThd', 'MThd ヘッダ');
+  eq(bytes[7], 6, 'ヘッダ長 = 6');
+  eq((bytes[8] << 8) | bytes[9], 1, 'フォーマット1');
+  eq((bytes[10] << 8) | bytes[11], 2, 'トラック数 = テンポ + 1');
+  eq((bytes[12] << 8) | bytes[13], 480, 'PPQ 480');
+  eq(s(14, 4), 'MTrk', 'テンポトラック');
+  // テンポイベント: offset22=delta0, 23=FF, 24=51, 25=03, 26-28=07A120 (500000μs=120bpm)
+  eq(bytes[24] === 0x51 && bytes[26] === 0x07 && bytes[27] === 0xa1 && bytes[28] === 0x20, true, 'テンポ 500000μs');
+  // ノートトラックに 0x90 3C (C4 on) が含まれる
+  let found = false;
+  for (let i = 0; i < bytes.length - 2; i++) {
+    if (bytes[i] === 0x90 && bytes[i + 1] === 60) found = true;
+  }
+  ok(found, 'ノートオン C4 が含まれる');
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
