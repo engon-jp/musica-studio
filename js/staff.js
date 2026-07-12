@@ -28,6 +28,22 @@ export function midiToStaff(midi, useFlat = false) {
 const SHARP_STEPS = [38, 35, 39, 36, 33, 37, 34]; // F5 C5 G5 D5 A4 E5 B4
 const FLAT_STEPS = [34, 37, 33, 36, 32, 35, 31];  // B4 E5 A4 D5 G4 C5 F4
 
+// 調号が変化させる文字の順（♯: F C G D A E B ／ ♭: B E A D G C F）
+const SHARP_ORDER = [3, 0, 4, 1, 5, 2, 6]; // LETTER_IDX で F=3, C=0, ...
+const FLAT_ORDER = [6, 2, 5, 1, 4, 0, 3];
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11]; // C D E F G A B
+
+// 譜表ステップ → MIDI（調号を適用したダイアトニック音。五線譜クリック編集用）
+export function staffStepToMidi(step, tonic = 0, mode = 'major') {
+  const ks = keySignature(tonic, mode);
+  const letter = ((step % 7) + 7) % 7;
+  const octave = Math.floor(step / 7);
+  let acc = 0;
+  const order = ks.type === 'sharp' ? SHARP_ORDER : FLAT_ORDER;
+  if (order.slice(0, ks.count).includes(letter)) acc = ks.type === 'sharp' ? 1 : -1;
+  return (octave + 1) * 12 + LETTER_PC[letter] + acc;
+}
+
 // voices: [{ notes: [{midi, start(拍), dur(拍)}], color, name }]
 // 戻り値: SVG文字列。root に data-x0 / data-ppb（再生ヘッド位置計算用）
 export function renderStaffSVG(voices, opts = {}) {
@@ -125,7 +141,7 @@ export function renderStaffSVG(voices, opts = {}) {
   // 再生ヘッド（呼び出し側が x を動かす）
   s += `<line data-role="staff-playhead" x1="${x0}" y1="${yOf(topStep)}" x2="${x0}" y2="${yOf(bottomStep)}" stroke="#e0795a" stroke-width="2" opacity="0"/>`;
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" data-x0="${x0}" data-ppb="${pxPerBeat}">${s}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" data-x0="${x0}" data-ppb="${pxPerBeat}" data-topstep="${topStep}" data-topmargin="${topMargin}" data-gap="${gap}" data-useflat="${useFlat ? 1 : 0}">${s}</svg>`;
 }
 
 function ledger(hx, y, gap, color) {

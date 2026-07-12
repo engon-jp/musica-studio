@@ -8,7 +8,7 @@ import {
 } from '../theory.js';
 import { voiceMidi } from '../synth.js';
 import { buildMidi } from '../midi.js';
-import { renderStaffSVG } from '../staff.js';
+import { renderStaffSVG, staffStepToMidi, midiToStaff } from '../staff.js';
 
 const HLINES = [
   { key: 'third-up', color: '#3ecf8e' },
@@ -116,7 +116,7 @@ export function init(el) {
       $('#hm-staff-wrap').style.display = view === 'staff' ? '' : 'none';
       $('#hm-edit-hint').textContent = view === 'roll'
         ? 'タップ＝音の追加／音の上をタップ＝削除（メロディのみ編集可。ハモリは自動追従）'
-        : '五線譜は表示専用（編集はピアノロールで）。音符の色＝上のチェックボックスの色';
+        : 'タップ＝音の追加（キーに合う音にスナップ）／メロディ音符をタップ＝削除。半音単位の調整はピアノロールで。音符の色＝上のチェックの色';
       refresh();
     })
   );
@@ -124,6 +124,7 @@ export function init(el) {
   $('#hm-play-orig').addEventListener('click', () => togglePlay(true));
   $('#hm-midi').addEventListener('click', exportMidi);
   $('#hm-roll').addEventListener('pointerdown', onRollTap);
+  $('#hm-staff-wrap').addEventListener('pointerdown', onStaffTap);
 
   refresh();
 }
@@ -211,6 +212,49 @@ function drawStaff() {
   }
   voices.push({ notes: melody, color: '#5b8cff', name: 'メロディ' });
   wrap.innerHTML = renderStaffSVG(voices, { tonic: keyEst.tonic, mode: keyEst.mode });
+}
+
+// 五線譜のタップ編集: 空白＝キーに合う音を追加／メロディ音符の上＝削除
+function onStaffTap(ev) {
+  const svg = panel.querySelector('#hm-staff-wrap svg');
+  if (!svg) return;
+  const rect = svg.getBoundingClientRect();
+  const scaleX = svg.viewBox.baseVal.width / rect.width;
+  const scaleY = svg.viewBox.baseVal.height / rect.height;
+  const x = (ev.clientX - rect.left) * scaleX;
+  const y = (ev.clientY - rect.top) * scaleY;
+
+  const x0 = Number(svg.dataset.x0);
+  const ppb = Number(svg.dataset.ppb);
+  const gap = Number(svg.dataset.gap);
+  const topStep = Number(svg.dataset.topstep);
+  const topMargin = Number(svg.dataset.topmargin);
+  const useFlat = svg.dataset.useflat === '1';
+
+  const beat = (x - x0) / ppb;
+  if (beat < -0.15) return; // 音部記号・調号のエリア
+  const step = Math.round(topStep - ((y - topMargin) * 2) / gap);
+  const headRx = gap * 0.66;
+
+  // 同じ譜表位置で符頭の近く（または音価の範囲内）のメロディ音符 → 削除
+  const hit = melody.findIndex((n) => {
+    if (midiToStaff(n.midi, useFlat).step !== step) return false;
+    const cx = x0 + n.start * ppb + headRx;
+    return Math.abs(x - cx) <= headRx * 2 || (beat >= n.start && beat < n.start + n.dur);
+  });
+  if (hit >= 0) {
+    melody.splice(hit, 1);
+    refresh();
+    return;
+  }
+
+  // 追加（キーのダイアトニック音にスナップ）
+  const midi = staffStepToMidi(step, keyEst.tonic, keyEst.mode);
+  if (midi < 36 || midi > 96) return;
+  melody.push({ midi, start: Math.max(0, Math.floor(beat / grid) * grid), dur: grid });
+  melody.sort((a, b) => a.start - b.start);
+  voiceMidi(midi, 0, 0.3, { gain: 0.3 });
+  refresh();
 }
 
 // 五線譜側の再生ヘッド。beat=null で非表示

@@ -264,5 +264,20 @@ console.log('--- 五線譜レンダラ ---');
   ok(gSvg.includes('♯'), 'G majorの調号♯が描かれる');
 }
 
+console.log('--- 五線譜ステップ→MIDI（クリック編集用）---');
+{
+  const { staffStepToMidi } = await import('../js/staff.js');
+  eq(staffStepToMidi(28, 0, 'major'), 60, 'Cメジャー: ステップ28 = C4');
+  eq(staffStepToMidi(30, 0, 'major'), 64, 'Cメジャー: ステップ30 = E4');
+  eq(staffStepToMidi(33, 0, 'major'), 69, 'Cメジャー: ステップ33 = A4');
+  eq(staffStepToMidi(31, 7, 'major'), 66, 'Gメジャー: F の位置 → F#4');
+  eq(staffStepToMidi(28, 7, 'major'), 60, 'Gメジャー: C は変化なし');
+  eq(staffStepToMidi(34, 5, 'major'), 70, 'Fメジャー: B の位置 → Bb4');
+  eq(staffStepToMidi(28, 2, 'major'), 61, 'Dメジャー: C の位置 → C#4');
+  eq(staffStepToMidi(31, 2, 'major'), 66, 'Dメジャー: F の位置 → F#4');
+  eq(staffStepToMidi(32, 9, 'minor'), 67, 'Aマイナー: G はナチュラル');
+  eq(staffStepToMidi(21, 0, 'major'), 48, 'ステップ21 = C3（オクターブ下）');
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
