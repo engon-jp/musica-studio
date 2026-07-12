@@ -1,0 +1,9 @@
+{
+  "name": "musica-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/run-tests.mjs",
+    "serve": "python3 -m http.server 8765"
+  }
+}

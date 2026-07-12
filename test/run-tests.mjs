@@ -1,0 +1,152 @@
+// 自動テスト: node test/run-tests.mjs
+import { detectPitch, pitchTrack, framesToNotes } from '../js/pitch.js';
+import {
+  midiToFreq, freqToNote, midiToName, noteToPc, parseChord, chordTones,
+  transposeChord, estimateKey, estimateKeyFromNotes, keyName,
+  snapToScale, diatonicShift, generateHarmony,
+} from '../js/theory.js';
+
+let pass = 0, fail = 0;
+function ok(cond, msg) {
+  if (cond) { pass++; }
+  else { fail++; console.error(`  ✗ FAIL: ${msg}`); }
+}
+function eq(actual, expected, msg) {
+  ok(actual === expected, `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+}
+
+const SR = 44100;
+
+function sine(freq, n = 2048, sr = SR, amp = 0.5) {
+  const b = new Float32Array(n);
+  for (let i = 0; i < n; i++) b[i] = amp * Math.sin((2 * Math.PI * freq * i) / sr);
+  return b;
+}
+
+function saw(freq, n = 2048, sr = SR, amp = 0.5, harmonics = 12) {
+  const b = new Float32Array(n);
+  for (let h = 1; h <= harmonics; h++) {
+    for (let i = 0; i < n; i++) {
+      b[i] += ((amp * (h % 2 ? 1 : -1)) / h) * Math.sin((2 * Math.PI * freq * h * i) / sr);
+    }
+  }
+  return b;
+}
+
+console.log('--- ピッチ検出（MPM）---');
+const guitarFreqs = [82.41, 110.0, 146.83, 196.0, 246.94, 329.63]; // E2 A2 D3 G3 B3 E4
+const extraFreqs = [440, 660, 987.77, 73.42]; // A4, E5, B5, D2(ドロップD)
+for (const f of [...guitarFreqs, ...extraFreqs]) {
+  for (const [gen, label] of [[sine, 'sine'], [saw, 'saw']]) {
+    const r = detectPitch(gen(f), SR);
+    ok(r !== null, `${label} ${f}Hz: 検出できること`);
+    if (r) {
+      const centsErr = Math.abs(1200 * Math.log2(r.freq / f));
+      ok(centsErr < 1.0, `${label} ${f}Hz: 誤差 ${centsErr.toFixed(3)}¢ < 1¢`);
+    }
+  }
+}
+// 48kHz（iOS想定）でも
+for (const f of [82.41, 329.63, 440]) {
+  const r = detectPitch(sine(f, 2048, 48000), 48000);
+  const centsErr = r ? Math.abs(1200 * Math.log2(r.freq / f)) : 999;
+  ok(centsErr < 1.0, `48kHz sine ${f}Hz: 誤差 ${centsErr.toFixed(3)}¢ < 1¢`);
+}
+// 無音・ノイズは null
+ok(detectPitch(new Float32Array(2048), SR) === null, '無音は null');
+{
+  const noise = new Float32Array(2048).map(() => Math.random() * 0.4 - 0.2);
+  const r = detectPitch(noise, SR);
+  ok(r === null || r.clarity < 0.95, 'ホワイトノイズを高確信で誤検出しないこと');
+}
+
+console.log('--- ピッチ軌跡 → ノート化 ---');
+{
+  // 0.3秒ずつ A3(220) → C#4(277.18) → E4(329.63)
+  const sr = SR;
+  const seg = Math.floor(0.3 * sr);
+  const data = new Float32Array(seg * 3);
+  data.set(sine(220, seg, sr), 0);
+  data.set(sine(277.18, seg, sr), seg);
+  data.set(sine(329.63, seg, sr), seg * 2);
+  const frames = pitchTrack(data, sr);
+  const notes = framesToNotes(frames);
+  eq(notes.length, 3, 'ノート数が3');
+  eq(notes.map((n) => n.midi).join(','), '57,61,64', 'A3, C#4, E4 と認識');
+}
+
+console.log('--- 音楽理論: 基本 ---');
+eq(midiToName(69), 'A4', 'midi69=A4');
+eq(midiToName(40), 'E2', 'midi40=E2');
+eq(midiToName(61, true), 'Db4', 'midi61 フラット表記=Db4');
+eq(noteToPc('C#'), 1, 'C#=1');
+eq(noteToPc('Bb'), 10, 'Bb=10');
+ok(Math.abs(midiToFreq(69) - 440) < 1e-9, 'midi69=440Hz');
+{
+  const n = freqToNote(445);
+  eq(n.name, 'A4', '445Hz は A4');
+  ok(Math.abs(n.cents - 19.56) < 0.1, `445Hz は +19.6¢ (got ${n.cents.toFixed(2)})`);
+}
+
+console.log('--- 音楽理論: コード ---');
+{
+  const p = parseChord('C#m7/G#');
+  eq(p.root, 1, 'C#m7/G# root');
+  eq(p.quality, 'm7', 'C#m7/G# quality');
+  eq(p.bass, 8, 'C#m7/G# bass');
+}
+eq(parseChord('BbM7').quality, 'maj7', 'BbM7 → maj7 に正規化');
+eq(parseChord('Xyz'), null, '不正コードは null');
+eq(parseChord('Cmaj9').quality, 'maj9', 'Cmaj9');
+eq(chordTones('C').join(','), '0,4,7', 'C = C,E,G');
+eq(chordTones('Am').join(','), '9,0,4', 'Am = A,C,E');
+eq(chordTones('G7').join(','), '7,11,2,5', 'G7 = G,B,D,F');
+eq(transposeChord('C', 2), 'D', 'C +2 = D');
+eq(transposeChord('Am', 3), 'Cm', 'Am +3 = Cm');
+eq(transposeChord('F#m7', -2), 'Em7', 'F#m7 -2 = Em7');
+eq(transposeChord('Bb', 2, null), 'C', 'Bb +2 = C（フラット系はCで解消）');
+eq(transposeChord('Bb', 1, null), 'B', 'Bb +1 = B（フラット表でも pc11 は B）');
+eq(transposeChord('C/G', 2), 'D/A', 'オンコードの移調');
+eq(transposeChord('Cadd9', -1, true), 'Badd9', 'Cadd9 -1 フラット指定でも B');
+
+console.log('--- 音楽理論: キー推定 ---');
+{
+  // Cメジャースケールの音を均等に → C major
+  const notes = [60, 62, 64, 65, 67, 69, 71, 72].map((m) => ({ midi: m, dur: 1 }));
+  notes[0].dur = 3; // トニック強調
+  notes[4].dur = 2; // ドミナント強調
+  const k = estimateKeyFromNotes(notes);
+  eq(keyName(k), 'C', 'Cメジャースケール → C major');
+}
+{
+  // Aナチュラルマイナー、A と E を強調 → A minor
+  const notes = [57, 59, 60, 62, 64, 65, 67, 69].map((m) => ({ midi: m, dur: 1 }));
+  notes[0].dur = 4;
+  notes[4].dur = 2;
+  const k = estimateKeyFromNotes(notes);
+  eq(keyName(k), 'Am', 'Aマイナー音列 → A minor');
+}
+
+console.log('--- 音楽理論: ダイアトニックハモリ ---');
+eq(diatonicShift(64, 0, 'major', 2), 67, 'キーC: E4 の3度上 = G4');
+eq(diatonicShift(60, 0, 'major', 2), 64, 'キーC: C4 の3度上 = E4');
+eq(diatonicShift(59, 0, 'major', 2), 62, 'キーC: B3 の3度上 = D4');
+eq(diatonicShift(64, 0, 'major', -2), 60, 'キーC: E4 の3度下 = C4');
+eq(diatonicShift(60, 0, 'major', 5), 69, 'キーC: C4 の6度上 = A4');
+eq(diatonicShift(60, 0, 'major', 7), 72, 'キーC: C4 のオクターブ上 = C5');
+eq(diatonicShift(69, 9, 'minor', 2), 72, 'キーAm: A4 の3度上 = C5');
+eq(diatonicShift(61, 0, 'major', 2), 64, 'キーC: C#4(スケール外) → タイは下(C)に丸めて3度上=E');
+eq(snapToScale(61, 0, 'major') === 60 || snapToScale(61, 0, 'major') === 62, true, 'C#はCかDに丸まる');
+{
+  const mel = [
+    { midi: 64, start: 0, dur: 0.5 },
+    { midi: 65, start: 0.5, dur: 0.5 },
+    { midi: 67, start: 1.0, dur: 1.0 },
+  ];
+  const h = generateHarmony(mel, 0, 'major', 2);
+  eq(h.map((n) => n.midi).join(','), '67,69,71', 'E,F,G の3度上 = G,A,B');
+  eq(h[2].start, 1.0, 'タイミングは維持');
+}
+
+console.log(`\n結果: ${pass} passed, ${fail} failed`);
+process.exit(fail > 0 ? 1 : 0);

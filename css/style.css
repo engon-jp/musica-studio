@@ -1,0 +1,344 @@
+/* Música Studio — 共通スタイル（ダークテーマ・モバイル対応） */
+
+:root {
+  --bg: #12141c;
+  --bg-panel: #1b1e2a;
+  --bg-input: #252938;
+  --border: #333a4f;
+  --text: #e8eaf2;
+  --text-dim: #9aa1b5;
+  --accent: #5b8cff;
+  --accent-soft: rgba(91, 140, 255, 0.18);
+  --green: #3ecf8e;
+  --red: #ff6b6b;
+  --yellow: #ffd166;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(18, 20, 28, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  padding: env(safe-area-inset-top) 16px 0;
+}
+
+.app-header h1 {
+  margin: 0;
+  padding: 10px 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.tab-nav {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 0;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.tab-nav::-webkit-scrollbar { display: none; }
+
+.tab-nav button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 14px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.tab-nav button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+main {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
+}
+
+.tab-panel h2 { font-size: 16px; color: var(--text-dim); margin: 8px 0; }
+
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.row + .row { margin-top: 10px; }
+
+label { font-size: 13px; color: var(--text-dim); }
+
+select, input[type="number"], input[type="text"], textarea {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 15px;
+  font-family: inherit;
+}
+
+input[type="number"] { width: 80px; }
+
+input[type="range"] { accent-color: var(--accent); }
+
+textarea {
+  width: 100%;
+  min-height: 220px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+button.btn {
+  appearance: none;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 40px;
+}
+
+button.btn:active { transform: scale(0.97); }
+
+button.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.btn.danger { color: var(--red); }
+
+button.btn.small { padding: 5px 10px; min-height: 30px; font-size: 13px; }
+
+.hint { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+.placeholder {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 60px 20px;
+}
+
+/* ---- チューナー ---- */
+
+.tuner-display {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
+.tuner-note {
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tuner-note .oct { font-size: 28px; color: var(--text-dim); }
+
+.tuner-note.in-tune { color: var(--green); }
+
+.tuner-sub {
+  font-size: 14px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  min-height: 20px;
+}
+
+.tuner-gauge { width: 100%; max-width: 420px; margin: 0 auto; display: block; }
+
+.tuner-strings {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.tuner-strings .string-btn {
+  min-width: 52px;
+  text-align: center;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.tuner-strings .string-btn small { display: block; font-weight: 400; color: var(--text-dim); font-size: 11px; }
+
+.tuner-strings .string-btn.near { border-color: var(--accent); background: var(--accent-soft); }
+
+.tuner-strings .string-btn.done { border-color: var(--green); color: var(--green); }
+
+/* ---- コード ---- */
+
+.chord-sheet {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.chord-sheet .chord-line { color: var(--accent); font-weight: 700; }
+
+.chord-sheet .chord-line .bad { color: var(--red); }
+
+.chord-diagrams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chord-diagrams figure { margin: 0; text-align: center; }
+
+.chord-diagrams figcaption { font-size: 13px; font-weight: 700; margin-top: 2px; }
+
+.chip {
+  display: inline-block;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chip.active { border-color: var(--accent); background: var(--accent-soft); }
+
+table.capo-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.capo-table th, table.capo-table td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+table.capo-table tr.best td { color: var(--green); font-weight: 700; }
+
+/* ---- 耳コピ ---- */
+
+canvas.wave, canvas.spec {
+  width: 100%;
+  border-radius: 8px;
+  background: #0d0f16;
+  display: block;
+  touch-action: none;
+}
+
+.transport {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.time-display { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-dim); }
+
+.note-seq {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+  line-height: 2;
+  word-break: break-all;
+}
+
+.note-seq .note-chip {
+  display: inline-block;
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 1px 7px;
+  margin: 1px 2px;
+}
+
+.cand-list { list-style: none; margin: 0; padding: 0; }
+.cand-list li { padding: 6px 4px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+.cand-list .score-bar { height: 6px; border-radius: 3px; background: var(--accent); align-self: center; }
+
+/* ---- ハモリ ---- */
+
+canvas.piano-roll {
+  width: 100%;
+  border-radius: 8px;
+  background: #0d0f16;
+  display: block;
+  touch-action: none;
+}
+
+.voice-mixer .row { align-items: center; }
+.voice-label { min-width: 110px; font-size: 13px; font-weight: 600; }
+
+/* ---- タブ譜 ---- */
+
+.tab-grid-wrap { overflow-x: auto; }
+
+table.tab-grid { border-collapse: collapse; font-family: "SF Mono", Menlo, monospace; }
+table.tab-grid td {
+  width: 30px; height: 30px;
+  text-align: center;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  user-select: none;
+}
+table.tab-grid td.beat-start { border-left: 2px solid var(--text-dim); }
+table.tab-grid td.active { background: var(--accent-soft); outline: 2px solid var(--accent); }
+table.tab-grid td.playing { background: rgba(62, 207, 142, 0.25); }
+table.tab-grid th { font-size: 12px; color: var(--text-dim); padding-right: 6px; font-weight: 400; }
+
+pre.ascii-tab {
+  background: var(--bg-input);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  .tuner-note { font-size: 60px; }
+  main { padding: 12px 10px calc(28px + env(safe-area-inset-bottom)); }
+  .card { padding: 12px; }
+}
+
+@media print {
+  .app-header, .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  .card { border: none; background: #fff; }
+  pre.ascii-tab { background: #fff; color: #000; }
+}
