@@ -148,5 +148,28 @@ eq(snapToScale(61, 0, 'major') === 60 || snapToScale(61, 0, 'major') === 62, tru
   eq(h[2].start, 1.0, 'タイミングは維持');
 }
 
+console.log('--- コードフォーム ---');
+{
+  const { getShape, shapeToMidis, capoSuggestions, easeScore } = await import('../js/chord-shapes.js');
+  const c = getShape('C');
+  eq(c.frets.join(','), '-1,3,2,0,1,0', 'C のオープンフォーム');
+  // C = x32010 → 実音 C3 E3 G3 C4 E4
+  eq(shapeToMidis(c).join(','), '48,52,55,60,64', 'C フォームの実音');
+  const fsm = getShape('F#m');
+  eq(fsm.frets.join(','), '2,4,4,2,2,2', 'F#m は2フレットバレー');
+  const csharp = getShape('C#');
+  ok(csharp && csharp.barres.length > 0, 'C# は可動バレーフォームで生成される');
+  eq(csharp.frets.join(','), '-1,4,6,6,6,4', 'C# は Aフォーム4フレット');
+  const gsm7 = getShape('G#m7');
+  ok(gsm7 !== null, 'G#m7 も可動フォームで出る');
+  ok(easeScore('G') > easeScore('F#'), 'G は F# より弾きやすい');
+  // カポ提案: B-E-F#-G#m はカポ4で G-C-D-Em になるはず
+  const rows = capoSuggestions(['B', 'E', 'F#', 'G#m']);
+  const capo4 = rows.find((r) => r.capo === 4);
+  eq(capo4.chords.join(' '), 'G C D Em', 'カポ4で G C D Em');
+  const best = rows.reduce((a, b) => (b.score > a.score ? b : a));
+  eq(best.capo, 4, 'ベスト提案はカポ4');
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

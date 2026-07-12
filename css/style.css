@@ -225,6 +225,14 @@ button.btn.small { padding: 5px 10px; min-height: 30px; font-size: 13px; }
 
 .chord-sheet .chord-line .bad { color: var(--red); }
 
+.cline { display: flex; flex-wrap: wrap; align-items: flex-end; margin: 3px 0; }
+.seg { display: inline-flex; flex-direction: column; }
+.seg .c { color: var(--accent); font-weight: 700; font-size: 13px; min-height: 19px; padding-right: 8px; white-space: pre; }
+.seg .c .bad { color: var(--red); }
+.seg .t { white-space: pre-wrap; font-size: 15px; line-height: 1.5; }
+.lyric-only { font-size: 15px; line-height: 1.7; }
+.sheet-space { height: 16px; }
+
 .chord-diagrams {
   display: flex;
   flex-wrap: wrap;
