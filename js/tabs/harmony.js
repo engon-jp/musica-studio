@@ -8,6 +8,7 @@ import {
 } from '../theory.js';
 import { voiceMidi } from '../synth.js';
 import { buildMidi } from '../midi.js';
+import { renderStaffSVG } from '../staff.js';
 
 const HLINES = [
   { key: 'third-up', color: '#3ecf8e' },
@@ -28,6 +29,7 @@ let importMeta = null; // 耳コピから来た場合 {offset}
 let playState = null;
 let playNodes = [];
 let rafId = null;
+let view = 'roll'; // 'roll' | 'staff'
 // マイク入力
 let micRec = null;
 
@@ -79,10 +81,15 @@ export function init(el) {
         <button class="btn" id="hm-midi">💾 MIDI書き出し</button>
         <span class="hint" id="hm-info"></span>
       </div>
-      <div class="tab-grid-wrap" style="margin-top:10px; overflow-x:auto">
+      <div class="row no-print" style="margin-top:10px">
+        <span class="chip active" data-view="roll">🎹 ピアノロール</span>
+        <span class="chip" data-view="staff">🎼 五線譜</span>
+      </div>
+      <div class="tab-grid-wrap" id="hm-roll-wrap" style="margin-top:8px; overflow-x:auto">
         <canvas class="piano-roll" id="hm-roll"></canvas>
       </div>
-      <p class="hint">タップ＝音の追加／音の上をタップ＝削除（メロディのみ編集可。ハモリは自動追従）</p>
+      <div class="tab-grid-wrap" id="hm-staff-wrap" style="margin-top:8px; overflow-x:auto; display:none; background:var(--bg-panel); border-radius:12px; padding:6px 2px"></div>
+      <p class="hint" id="hm-edit-hint">タップ＝音の追加／音の上をタップ＝削除（メロディのみ編集可。ハモリは自動追従）</p>
     </div>
   `;
 
@@ -98,6 +105,18 @@ export function init(el) {
   panel.querySelectorAll('input[data-line]').forEach((cb) =>
     cb.addEventListener('change', () => {
       cb.checked ? activeLines.add(cb.dataset.line) : activeLines.delete(cb.dataset.line);
+      refresh();
+    })
+  );
+  panel.querySelectorAll('.chip[data-view]').forEach((c) =>
+    c.addEventListener('click', () => {
+      view = c.dataset.view;
+      panel.querySelectorAll('.chip[data-view]').forEach((x) => x.classList.toggle('active', x === c));
+      $('#hm-roll-wrap').style.display = view === 'roll' ? '' : 'none';
+      $('#hm-staff-wrap').style.display = view === 'staff' ? '' : 'none';
+      $('#hm-edit-hint').textContent = view === 'roll'
+        ? 'タップ＝音の追加／音の上をタップ＝削除（メロディのみ編集可。ハモリは自動追従）'
+        : '五線譜は表示専用（編集はピアノロールで）。音符の色＝上のチェックボックスの色';
       refresh();
     })
   );
@@ -174,6 +193,40 @@ function refresh() {
   panel.querySelector('#hm-play-orig').disabled = !(importMeta && window.msBridge.data.earcopyAudio);
   panel.querySelector('#hm-info').textContent = melody.length ? `${melody.length}音 / キー ${pcName(keyEst.tonic)}${keyEst.mode === 'minor' ? 'm' : ''}` : '';
   drawRoll();
+  drawStaff();
+}
+
+function drawStaff() {
+  const wrap = panel.querySelector('#hm-staff-wrap');
+  if (!wrap || view !== 'staff') return;
+  if (melody.length === 0) {
+    wrap.innerHTML = '<p class="hint" style="padding:12px">メロディがまだありません</p>';
+    return;
+  }
+  const voices = [];
+  for (const h of HLINES) {
+    if (activeLines.has(h.key) && harmonies[h.key]) {
+      voices.push({ notes: harmonies[h.key], color: h.color, name: HARMONY_PRESETS[h.key].label });
+    }
+  }
+  voices.push({ notes: melody, color: '#5b8cff', name: 'メロディ' });
+  wrap.innerHTML = renderStaffSVG(voices, { tonic: keyEst.tonic, mode: keyEst.mode });
+}
+
+// 五線譜側の再生ヘッド。beat=null で非表示
+function setStaffPlayhead(beat) {
+  const svg = panel.querySelector('#hm-staff-wrap svg');
+  if (!svg) return;
+  const line = svg.querySelector('[data-role="staff-playhead"]');
+  if (!line) return;
+  if (beat === null) {
+    line.setAttribute('opacity', 0);
+    return;
+  }
+  const x = Number(svg.dataset.x0) + beat * Number(svg.dataset.ppb);
+  line.setAttribute('x1', x);
+  line.setAttribute('x2', x);
+  line.setAttribute('opacity', 0.8);
 }
 
 function rollGeom() {
@@ -378,7 +431,8 @@ async function togglePlay(withOriginal) {
     rafId = requestAnimationFrame(tick);
     const beat = (getCtx().currentTime - playState.t0) / playState.spb;
     if (beat > playState.endBeat + 1) { stopPlayback(); return; }
-    drawRoll(Math.max(0, beat));
+    if (view === 'roll') drawRoll(Math.max(0, beat));
+    else setStaffPlayhead(Math.max(0, beat));
   };
   tick();
 }
@@ -392,6 +446,7 @@ function stopPlayback() {
   playState = null;
   panel.querySelector('#hm-play').textContent = '▶ 再生';
   drawRoll();
+  setStaffPlayhead(null);
 }
 
 // ---- MIDI ----

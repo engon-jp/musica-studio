@@ -230,5 +230,39 @@ console.log('--- MIDI 書き出し ---');
   ok(found, 'ノートオン C4 が含まれる');
 }
 
+console.log('--- 五線譜レンダラ ---');
+{
+  const { keySignature, midiToStaff, renderStaffSVG } = await import('../js/staff.js');
+  eq(keySignature(0).count, 0, 'C major: 調号なし');
+  eq(keySignature(7).type + keySignature(7).count, 'sharp1', 'G major: ♯1');
+  eq(keySignature(2).count, 2, 'D major: ♯2');
+  eq(keySignature(5).type + keySignature(5).count, 'flat1', 'F major: ♭1');
+  eq(keySignature(10).type + keySignature(10).count, 'flat2', 'Bb major: ♭2');
+  eq(keySignature(9, 'minor').count, 0, 'A minor: 調号なし');
+  eq(keySignature(4, 'minor').type + keySignature(4, 'minor').count, 'sharp1', 'E minor: ♯1');
+
+  eq(midiToStaff(64).step, 30, 'E4 = ステップ30（第1線）');
+  eq(midiToStaff(60).step, 28, 'C4 = ステップ28（下第1線）');
+  eq(midiToStaff(69).step, 33, 'A4 = ステップ33');
+  eq(midiToStaff(59).step, 27, 'B3 = ステップ27');
+  eq(midiToStaff(61).accidental, '#', 'midi61 シャープ表記');
+  eq(midiToStaff(61).step, 28, 'C#4 は Cの位置');
+  eq(midiToStaff(61, true).accidental, 'b', 'midi61 フラット表記');
+  eq(midiToStaff(61, true).step, 29, 'Db4 は Dの位置');
+
+  const svg = renderStaffSVG(
+    [{ notes: [{ midi: 60, start: 0, dur: 1 }, { midi: 64, start: 1, dur: 2 }, { midi: 67, start: 3, dur: 0.5 }, { midi: 61, start: 3.5, dur: 0.5 }], color: '#123456', name: 'm' }],
+    { tonic: 0, mode: 'major' }
+  );
+  eq((svg.match(/<ellipse/g) || []).length, 4, '符頭4つ');
+  eq((svg.match(/fill="none" stroke="#123456"/g) || []).length, 1, '2分音符（白玉）が1つ');
+  ok(svg.includes('♯'), 'スケール外の C#4 に♯が付く');
+  ok(svg.includes('data-role="staff-playhead"'), '再生ヘッドを含む');
+  ok(svg.includes('𝄞'), 'ト音記号を含む');
+  // C4（ステップ28）に加線が1本つく（x範囲の短い line）
+  const gSvg = renderStaffSVG([{ notes: [{ midi: 57, start: 0, dur: 1 }], color: '#000', name: 'm' }], { tonic: 7 });
+  ok(gSvg.includes('♯'), 'G majorの調号♯が描かれる');
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
