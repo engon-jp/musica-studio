@@ -171,5 +171,39 @@ console.log('--- コードフォーム ---');
   eq(best.capo, 4, 'ベスト提案はカポ4');
 }
 
+console.log('--- DSP: FFT・クロマ・コード候補 ---');
+{
+  const { fft, spectrum, chromaOf, chordCandidates } = await import('../js/dsp.js');
+  // FFT: ビン8の正弦波 → スペクトルのピークがビン8
+  const n = 256;
+  const re = new Float32Array(n), im = new Float32Array(n);
+  for (let i = 0; i < n; i++) re[i] = Math.sin((2 * Math.PI * 8 * i) / n);
+  fft(re, im);
+  let peakBin = 0, peakV = 0;
+  for (let k = 0; k < n / 2; k++) {
+    const v = Math.hypot(re[k], im[k]);
+    if (v > peakV) { peakV = v; peakBin = k; }
+  }
+  eq(peakBin, 8, 'FFT: 正弦波のピークビン');
+
+  // 和音（正弦波合成）→ コード候補
+  const mkChord = (freqs, dur = 1.0) => {
+    const len = Math.floor(SR * dur);
+    const d = new Float32Array(len);
+    for (const f of freqs) {
+      for (let h = 1; h <= 3; h++) {
+        for (let i = 0; i < len; i++) d[i] += (0.5 / h) * Math.sin((2 * Math.PI * f * h * i) / SR);
+      }
+    }
+    return d;
+  };
+  const cMaj = chordCandidates(chromaOf(mkChord([261.63, 329.63, 392.0]), SR), 3);
+  eq(cMaj[0].chord, 'C', 'C-E-G → 最有力候補は C');
+  const aMin = chordCandidates(chromaOf(mkChord([220.0, 261.63, 329.63]), SR), 3);
+  eq(aMin[0].chord, 'Am', 'A-C-E → 最有力候補は Am');
+  const g7 = chordCandidates(chromaOf(mkChord([196.0, 246.94, 293.66, 349.23]), SR), 3);
+  ok(g7.slice(0, 2).some((c) => c.chord === 'G7'), `G-B-D-F → 上位2候補に G7（got ${g7.map((c) => c.chord).join(',')}）`);
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
