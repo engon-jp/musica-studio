@@ -24,14 +24,13 @@
 - [x] 耳コピ支援（A-Bループ・ピッチ保持速度変更・帯域フィルタ・スペクトログラム・メロディ検出・コード候補）
 - [x] ハモリ自動生成（キー推定・3度上下/6度/オク下・ピアノロール・シンセ再生・MIDI書き出し・マイク歌唱入力）
 - [x] タブ譜エディタ（グリッド入力・KS再生・ASCII出力・印刷CSS）
-- [ ] GitHub Pages デプロイ
+- [x] GitHub Pages デプロイ → **https://engon-jp.github.io/musica-studio/** （リポジトリ: engon-jp/musica-studio・public）
 - 自動テスト: 105件 全通過（`node test/run-tests.mjs`）
 - E2E確認済み: 合成WAV→メロディ検出(A3/C#4/E4)→ハモリ生成(3度上)→ピアノロール描画、コード候補判定(A major正解)、タブ譜ASCII出力
 
 ## 次のアクション
 
-- GitHub 公開リポジトリ作成 → Pages 有効化（実行前に遠藤さんに確認）
-- デプロイ後: Mac実機でマイク（チューナー）、iPhone Safari で全タブ動作確認
+- 遠藤さんの実機確認: Mac でマイク（チューナー）、iPhone Safari で全タブ（特にマイク許可とタッチ操作）
 - 将来アイデア: PWA化（オフライン対応）・ボーカル抽出前処理（ElevenLabs isolate_audio）・コード譜のカポ運指最適化
 
 ## 資料の所在
