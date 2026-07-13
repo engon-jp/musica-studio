@@ -342,6 +342,15 @@ console.log('--- コード進行トラッカー ---');
   // Cメジャーと Aマイナーは平行調（構成音が同一）なのでどちらも正解
   ok(res.key.tonic === 0 || (res.key.tonic === 9 && res.key.mode === 'minor'),
     `キー推定は C major か A minor（got ${res.key.tonic} ${res.key.mode}）`);
+  // ベースライン: ルート C2→A2→D2→G2… を正しく採る
+  ok(Array.isArray(res.bassline) && res.bassline.length >= 6, `ベースラインが出る（got ${res.bassline?.length}）`);
+  const bassSeq = res.bassline.map((n) => n.midi).filter((m, i, a) => i === 0 || m !== a[i - 1]);
+  eq(bassSeq.slice(0, 4).join(','), '36,45,38,43', `ベース音列 C2,A2,D2,G2（got ${bassSeq.slice(0, 6).join(',')}）`);
+
+  const { fretForMidi, BASS_TUNING } = await import('../js/chord-shapes.js');
+  eq(JSON.stringify(fretForMidi(36, BASS_TUNING)), '{"string":1,"fret":3}', 'C2はA弦3フレット');
+  eq(JSON.stringify(fretForMidi(28, BASS_TUNING)), '{"string":0,"fret":0}', 'E1は開放E弦');
+  eq(fretForMidi(20, BASS_TUNING), null, '音域外は null');
 }
 
 console.log('--- ピアノアレンジャー ---');

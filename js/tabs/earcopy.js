@@ -588,6 +588,7 @@ function renderProg(res) {
     </div>
     <div class="row" style="margin-top:8px">
       <button class="btn primary" id="ec-prog-send">📝 コード譜タブへ送る</button>
+      <button class="btn" id="ec-bass-send" ${res.bassline?.length ? '' : 'disabled'}>🎸 ベースのタブ譜を作る（${res.bassline?.length ?? 0}音）</button>
       <span class="hint">自動解析は候補です。仕上げはあなたの耳で</span>
     </div>`;
   out.querySelectorAll('.prog-block').forEach((el) =>
@@ -600,6 +601,10 @@ function renderProg(res) {
       out.querySelectorAll('.prog-block').forEach((x) => x.classList.toggle('active', x === el));
     })
   );
+  out.querySelector('#ec-bass-send')?.addEventListener('click', () => {
+    if (!res.bassline?.length) return;
+    window.msBridge.send('tab', 'bassline', { notes: res.bassline, bpm: res.bpm });
+  });
   out.querySelector('#ec-prog-send').addEventListener('click', () => {
     const lines = [];
     for (let i = 0; i < res.segments.length; i += 4) {

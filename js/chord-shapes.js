@@ -6,6 +6,17 @@
 import { parseChord, pcName, transposeChord } from './theory.js';
 
 export const STANDARD_TUNING = [40, 45, 50, 55, 59, 64]; // E2 A2 D3 G3 B3 E4
+export const BASS_TUNING = [28, 33, 38, 43]; // E1 A1 D2 G2
+
+// MIDIノートを弦とフレットに割り当てる（最も低いポジション優先。範囲外は null）
+export function fretForMidi(midi, tuning, maxFret = 15) {
+  let best = null;
+  tuning.forEach((open, string) => {
+    const fret = midi - open;
+    if (fret >= 0 && fret <= maxFret && (!best || fret < best.fret)) best = { string, fret };
+  });
+  return best;
+}
 
 export const OPEN_SHAPES = {
   // メジャー

@@ -22,6 +22,22 @@ const FAMILIES = [
 
 const N_STATES = FAMILIES.length * 12;
 
+// 移動平均ローパス（ベース検出前に中高域のコード音を除く）
+function lowpassMA(x, k, passes = 2) {
+  let cur = x;
+  for (let p = 0; p < passes; p++) {
+    const out = new Float32Array(cur.length);
+    let acc = 0;
+    for (let i = 0; i < cur.length; i++) {
+      acc += cur[i];
+      if (i >= k) acc -= cur[i - k];
+      out[i] = acc / Math.min(i + 1, k);
+    }
+    cur = out;
+  }
+  return cur;
+}
+
 export async function trackChords(input, sampleRate, opts = {}) {
   const { onProgress = null, maxSeconds = 480 } = opts;
   const data = input.length > sampleRate * maxSeconds
@@ -129,6 +145,7 @@ export async function trackChords(input, sampleRate, opts = {}) {
   const nBeats = beatFrames.length;
   const beatChroma = [];
   const bassPc = [];
+  const bassMidi = []; // オクターブ込みのベース音（ベースライン採譜用）
   const bassFactor = Math.max(1, Math.round(sampleRate / 2756));
   for (let b = 0; b < nBeats; b++) {
     const f0 = beatFrames[b];
@@ -145,11 +162,18 @@ export async function trackChords(input, sampleRate, opts = {}) {
     const s0 = Math.floor(t0 * sampleRate);
     const segLen = Math.min(Math.floor((t1 - t0) * sampleRate), Math.floor(0.45 * sampleRate));
     const seg = data.subarray(s0, Math.min(data.length, s0 + segLen));
-    const low = downsample(seg, bassFactor);
+    const low = lowpassMA(downsample(seg, bassFactor), 9, 2);
     const r = low.length > 128
-      ? detectPitch(low, sampleRate / bassFactor, { minFreq: 32, maxFreq: 200, clarityThreshold: 0.7, rmsThreshold: 0.0025 })
+      ? detectPitch(low, sampleRate / bassFactor, { minFreq: 32, maxFreq: 210, clarityThreshold: 0.6, rmsThreshold: 0.002 })
       : null;
-    bassPc.push(r ? ((Math.round(69 + 12 * Math.log2(r.freq / 440)) % 12) + 12) % 12 : null);
+    let m = r ? Math.round(69 + 12 * Math.log2(r.freq / 440)) : null;
+    if (m !== null) {
+      // ベース音域 E1〜A3 に正規化（オクターブ誤検出の保険）
+      while (m > 57) m -= 12;
+      while (m < 28) m += 12;
+    }
+    bassMidi.push(m);
+    bassPc.push(m !== null ? ((m % 12) + 12) % 12 : null);
   }
   if (onProgress) { onProgress(0.85); await new Promise((r) => setTimeout(r, 0)); }
 
@@ -251,6 +275,20 @@ export async function trackChords(input, sampleRate, opts = {}) {
     }
   }
 
+  // --- 8) ベースライン（拍単位、同音の連続をまとめる）---
+  const bassline = [];
+  let runStart = -1;
+  for (let b = 0; b <= nBeats; b++) {
+    const cur = b < nBeats ? bassMidi[b] : null;
+    const prev2 = runStart >= 0 ? bassMidi[runStart] : null;
+    if (cur !== prev2) {
+      if (runStart >= 0 && prev2 !== null) {
+        bassline.push({ midi: prev2, startBeat: runStart, beats: b - runStart });
+      }
+      runStart = cur !== null ? b : -1;
+    }
+  }
+
   if (onProgress) onProgress(1);
-  return { bpm, beats: beatTimes, key, useFlat, segments };
+  return { bpm, beats: beatTimes, key, useFlat, segments, bassline };
 }

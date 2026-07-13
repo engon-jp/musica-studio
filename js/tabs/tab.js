@@ -1,27 +1,34 @@
-// タブ譜タブ: 6弦グリッド入力・再生・ASCII出力・印刷
+// タブ譜タブ: グリッド入力・再生・ASCII出力・印刷（ギター6弦／ベース4弦）
 
 import { resumeCtx, getCtx } from '../audio-engine.js';
 import { pluckMidi } from '../synth.js';
-import { STANDARD_TUNING } from '../chord-shapes.js';
+import { STANDARD_TUNING, BASS_TUNING, fretForMidi } from '../chord-shapes.js';
 
-const STRING_LABELS = ['e', 'B', 'G', 'D', 'A', 'E']; // 表示は高音弦が上
+const INSTRUMENTS = {
+  guitar: { label: 'ギター（6弦）', tuning: STANDARD_TUNING, labels: ['e', 'B', 'G', 'D', 'A', 'E'] },
+  bass: { label: 'ベース（4弦）', tuning: BASS_TUNING, labels: ['G', 'D', 'A', 'E'] },
+};
 const STEPS_PER_BAR = 16; // 16分音符
 
 let panel;
+let instrument = 'guitar';
 let bars = 2;
-let cells = {}; // "step:stringIdx"(0=6弦E) → fret
-let selected = null; // {step, str}
+let cells = {}; // "step:stringIdx"(0=最低音弦) → fret
+let selected = null;
 let typeBuf = '';
 let typeTimer = null;
 let playing = null;
 
 const totalSteps = () => bars * STEPS_PER_BAR;
+const inst = () => INSTRUMENTS[instrument];
+const nStrings = () => inst().tuning.length;
 
 export function init(el) {
   panel = el;
   panel.innerHTML = `
     <div class="card no-print">
       <div class="row">
+        <select id="tb-inst">${Object.entries(INSTRUMENTS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select>
         <button class="btn primary" id="tb-play">▶ 再生</button>
         <label>BPM <input type="number" id="tb-bpm" value="100" min="40" max="240"></label>
         <button class="btn small" id="tb-add-bar">＋小節</button>
@@ -31,11 +38,11 @@ export function init(el) {
       <div class="row">
         <label>フレット:</label>
         <div id="tb-frets" class="row" style="gap:4px">
-          ${[0,1,2,3,4,5,6,7,8,9,10,11,12].map((f) => `<button class="btn small" data-fret="${f}">${f}</button>`).join('')}
+          ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((f) => `<button class="btn small" data-fret="${f}">${f}</button>`).join('')}
           <button class="btn small danger" data-fret="-1">✕消</button>
         </div>
       </div>
-      <p class="hint">マスを選択してフレット番号ボタン（またはキーボードの数字）で入力。PCでは0〜24を直接タイプ、Backspaceで削除。</p>
+      <p class="hint" id="tb-hint">マスを選択してフレット番号ボタン（またはキーボードの数字）で入力。PCでは0〜24を直接タイプ、Backspaceで削除。</p>
     </div>
     <div class="card">
       <div class="tab-grid-wrap"><table class="tab-grid" id="tb-grid"></table></div>
@@ -50,8 +57,9 @@ export function init(el) {
   `;
 
   const $ = (s) => panel.querySelector(s);
+  $('#tb-inst').addEventListener('change', (e) => switchInstrument(e.target.value));
   $('#tb-play').addEventListener('click', togglePlay);
-  $('#tb-add-bar').addEventListener('click', () => { bars = Math.min(16, bars + 1); refresh(); });
+  $('#tb-add-bar').addEventListener('click', () => { bars = Math.min(32, bars + 1); refresh(); });
   $('#tb-del-bar').addEventListener('click', () => {
     bars = Math.max(1, bars - 1);
     for (const k of Object.keys(cells)) if (Number(k.split(':')[0]) >= totalSteps()) delete cells[k];
@@ -73,8 +81,49 @@ export function init(el) {
   refresh();
 }
 
+function switchInstrument(next, force = false) {
+  if (next === instrument) return;
+  if (!force && Object.keys(cells).length > 0 && !confirm('楽器を切り替えると現在の入力を消去します。よいですか？')) {
+    panel.querySelector('#tb-inst').value = instrument;
+    return;
+  }
+  instrument = next;
+  cells = {};
+  selected = null;
+  panel.querySelector('#tb-inst').value = instrument;
+  refresh();
+}
+
+// 耳コピタブの「ベースライン」受信: notes = [{midi, startBeat, beats}]
+export function receive(key, value) {
+  if (key !== 'bassline') return;
+  instrument = 'bass';
+  panel.querySelector('#tb-inst').value = 'bass';
+  cells = {};
+  selected = null;
+  const maxStep = Math.max(...value.notes.map((n) => (n.startBeat + n.beats) * 4), STEPS_PER_BAR);
+  bars = Math.min(32, Math.max(1, Math.ceil(maxStep / STEPS_PER_BAR)));
+  let placed = 0;
+  for (const n of value.notes) {
+    // ベース音域に収める（オクターブ誤検出の補正）
+    let m = n.midi;
+    while (m > BASS_TUNING[3] + 12) m -= 12;
+    while (m < BASS_TUNING[0]) m += 12;
+    const pos = fretForMidi(m, BASS_TUNING);
+    if (!pos) continue;
+    const step = Math.round(n.startBeat * 4);
+    if (step >= totalSteps()) continue;
+    cells[`${step}:${pos.string}`] = pos.fret;
+    placed++;
+  }
+  if (value.bpm) panel.querySelector('#tb-bpm').value = value.bpm;
+  refresh();
+  panel.querySelector('#tb-hint').textContent =
+    `ベースライン ${placed} 音を配置しました（自動採譜は候補です。拍のアタマ単位・最低ポジション運指）。マスをタップして修正できます`;
+}
+
 function persist() {
-  localStorage.setItem('ms-tab', JSON.stringify({ bars, cells }));
+  localStorage.setItem('ms-tab', JSON.stringify({ bars, cells, instrument }));
 }
 
 function load() {
@@ -83,14 +132,17 @@ function load() {
     if (d && d.cells && Object.keys(d.cells).length > 0) {
       bars = d.bars || 2;
       cells = d.cells;
+      instrument = d.instrument || 'guitar';
+      panel.querySelector('#tb-inst').value = instrument;
       return;
     }
   } catch { /* 初回 */ }
   seedDemo();
 }
 
-// 初回起動時のデモ: きらきら星の単音メロディ（4分音符=4ステップ刻み）
+// 初回起動時のデモ: きらきら星の単音メロディ（ギター）
 function seedDemo() {
+  instrument = 'guitar';
   bars = 4;
   cells = {};
   const seq = [
@@ -111,15 +163,13 @@ function refresh() {
 function buildGrid() {
   const tbl = panel.querySelector('#tb-grid');
   const n = totalSteps();
+  const ns = nStrings();
   let html = '<tr><th></th>';
-  for (let s = 0; s < n; s++) {
-    html += `<th>${s % 4 === 0 ? s / 4 + 1 : ''}</th>`;
-  }
+  for (let s = 0; s < n; s++) html += `<th>${s % 4 === 0 ? s / 4 + 1 : ''}</th>`;
   html += '</tr>';
-  // 表示行: 1弦(e)が上 → stringIdx 5..0
-  for (let row = 0; row < 6; row++) {
-    const str = 5 - row;
-    html += `<tr><th>${STRING_LABELS[row]}</th>`;
+  for (let row = 0; row < ns; row++) {
+    const str = ns - 1 - row;
+    html += `<tr><th>${inst().labels[row]}</th>`;
     for (let s = 0; s < n; s++) {
       const v = cells[`${s}:${str}`];
       const cls = [s % 4 === 0 ? 'beat-start' : '', selected && selected.step === s && selected.str === str ? 'active' : ''].join(' ');
@@ -142,7 +192,7 @@ function setFret(f) {
   if (f < 0) delete cells[key];
   else {
     cells[key] = f;
-    resumeCtx().then(() => pluckMidi(STANDARD_TUNING[selected.str] + f, 0, { gain: 0.4, dur: 1.2 }));
+    resumeCtx().then(() => pluckMidi(inst().tuning[selected.str] + f, 0, { gain: 0.4, dur: 1.4 }));
   }
   refresh();
 }
@@ -167,7 +217,7 @@ function onKey(e) {
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
     selected = {
       step: Math.max(0, Math.min(totalSteps() - 1, selected.step + d[0])),
-      str: Math.max(0, Math.min(5, selected.str + d[1])),
+      str: Math.max(0, Math.min(nStrings() - 1, selected.str + d[1])),
     };
     buildGrid();
     e.preventDefault();
@@ -186,9 +236,14 @@ async function togglePlay() {
   const t0 = ctx.currentTime + 0.1;
   const n = totalSteps();
   for (let s = 0; s < n; s++) {
-    for (let str = 0; str < 6; str++) {
+    for (let str = 0; str < nStrings(); str++) {
       const f = cells[`${s}:${str}`];
-      if (f !== undefined) pluckMidi(STANDARD_TUNING[str] + f, t0 + s * stepDur, { gain: 0.35, dur: 1.5 });
+      if (f !== undefined) {
+        pluckMidi(inst().tuning[str] + f, t0 + s * stepDur, {
+          gain: instrument === 'bass' ? 0.5 : 0.35,
+          dur: instrument === 'bass' ? 2 : 1.5,
+        });
+      }
     }
   }
   playing = { t0, stepDur, n };
@@ -216,10 +271,11 @@ function stopPlay() {
 
 function ascii() {
   const n = totalSteps();
+  const ns = nStrings();
   const lines = [];
-  for (let row = 0; row < 6; row++) {
-    const str = 5 - row;
-    let line = STRING_LABELS[row] + '|';
+  for (let row = 0; row < ns; row++) {
+    const str = ns - 1 - row;
+    let line = inst().labels[row] + '|';
     for (let s = 0; s < n; s++) {
       const v = cells[`${s}:${str}`];
       line += v === undefined ? '---' : String(v).padEnd(2, '-') + '-';
