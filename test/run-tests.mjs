@@ -279,5 +279,70 @@ console.log('--- 五線譜ステップ→MIDI（クリック編集用）---');
   eq(staffStepToMidi(21, 0, 'major'), 48, 'ステップ21 = C3（オクターブ下）');
 }
 
+console.log('--- ジャズ/ボサノヴァ・ボイシング ---');
+{
+  const { getShape } = await import('../js/chord-shapes.js');
+  eq(getShape('C9').frets.join(','), '-1,3,2,3,3,-1', 'C9 = x3233x（定番フォーム）');
+  eq(getShape('Bbmaj7').frets.join(','), '-1,1,3,2,3,-1', 'Bbmaj7 = x1323x（drop2）');
+  eq(getShape('Fm7b5').frets.join(','), '1,-1,1,1,0,-1', 'Fm7b5 = 1x110x（drop3）');
+  eq(getShape('Cdim7').frets.join(','), '-1,3,4,2,4,-1', 'Cdim7 = x3424x');
+  eq(getShape('C6').frets.join(','), '-1,3,2,2,1,0', 'C6 はオープン形');
+  eq(getShape('G13').frets.join(','), '3,-1,3,4,5,-1', 'G13 = 3x345x');
+  eq(getShape('Dm9').frets.join(','), '-1,5,3,5,5,-1', 'Dm9 = x5355x');
+  eq(getShape('Bbm7').frets.join(','), '-1,1,3,1,2,-1', 'Bbm7 = x1312x（drop2）');
+  eq(getShape('G7b9').frets.join(','), '-1,10,9,10,9,-1', 'G7b9 = drop2系');
+  ok(getShape('F#m7b5') !== null && getShape('F#m7b5').barres.length === 0, 'F#m7b5 はバレーなしのコンパクト形');
+  // 従来のトライアドはフルバレーのまま
+  eq(getShape('C#').frets.join(','), '-1,4,6,6,6,4', 'C# トライアドは Aフォームバレー');
+}
+
+console.log('--- コード進行トラッカー ---');
+{
+  const { trackChords } = await import('../js/chord-tracker.js');
+  // 120bpm・各コード2拍・毎拍リストライク（アタックあり）で8コード16拍=8秒を合成
+  const bpm = 120, beatDur = 60 / bpm;
+  const prog = [
+    { name: 'Cmaj7', bass: 36, tones: [60, 64, 67, 71] },
+    { name: 'Am7', bass: 45, tones: [60, 64, 67, 69] },   // C6と同じ構成音・ベースA
+    { name: 'Dm7', bass: 38, tones: [62, 65, 69, 72] },
+    { name: 'G7', bass: 43, tones: [59, 62, 65, 67] },
+    { name: 'C6', bass: 36, tones: [60, 64, 67, 69] },    // Am7と同じ構成音・ベースC
+    { name: 'Am7', bass: 45, tones: [60, 64, 67, 69] },
+    { name: 'Fmaj7', bass: 41, tones: [57, 60, 64, 65] },
+    { name: 'G7', bass: 43, tones: [59, 62, 65, 67] },
+  ];
+  const m2f = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const total = Math.floor(SR * beatDur * prog.length * 2);
+  const audio = new Float32Array(total);
+  let pos = 0;
+  for (const ch of prog) {
+    for (let beat = 0; beat < 2; beat++) {
+      const len = Math.floor(SR * beatDur);
+      for (const [midi, amp, nh] of [[ch.bass, 0.5, 2], ...ch.tones.map((t) => [t, 0.2, 3])]) {
+        const f = m2f(midi);
+        for (let h = 1; h <= nh; h++) {
+          for (let i = 0; i < len; i++) {
+            const env = Math.min(1, i / (SR * 0.003)) * Math.exp(-i / (SR * 0.3));
+            audio[pos + i] += env * (amp / h) * Math.sin((2 * Math.PI * f * h * i) / SR);
+          }
+        }
+      }
+      pos += len;
+    }
+  }
+  const res = await trackChords(audio, SR);
+  ok(res !== null, 'トラッカーが結果を返す');
+  ok(res.bpm >= 110 && res.bpm <= 130, `テンポ 110-130（got ${res.bpm}）`);
+  const labels = res.segments.map((s) => s.chord);
+  const uniq = labels.filter((c, i) => i === 0 || c !== labels[i - 1]);
+  const expected = ['Cmaj7', 'Am7', 'Dm7', 'G7', 'C6', 'Am7', 'Fmaj7', 'G7'];
+  eq(uniq.join(' '), expected.join(' '), `進行を正しく認識（got: ${uniq.join(' ')}）`);
+  ok(res.segments.some((s) => s.chord === 'C6'), 'C6（ベースC）を Am7 と区別');
+  ok(res.segments.filter((s) => s.chord === 'Am7').length >= 1, 'Am7（ベースA）を C6 と区別');
+  // Cメジャーと Aマイナーは平行調（構成音が同一）なのでどちらも正解
+  ok(res.key.tonic === 0 || (res.key.tonic === 9 && res.key.mode === 'minor'),
+    `キー推定は C major か A minor（got ${res.key.tonic} ${res.key.mode}）`);
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

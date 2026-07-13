@@ -2,8 +2,9 @@
 
 import { getCtx, resumeCtx, decodeFile, toMono } from '../audio-engine.js';
 import { pitchTrack, framesToNotes, downsample } from '../pitch.js';
-import { midiToName } from '../theory.js';
+import { midiToName, pcName } from '../theory.js';
 import { chromaOf, chordCandidates, chordSegments } from '../dsp.js';
+import { trackChords } from '../chord-tracker.js';
 
 let panel;
 let audioEl = null;
@@ -86,11 +87,13 @@ export function init(el) {
       <div class="row">
         <button class="btn" id="ec-melody" disabled>🎼 メロディ検出</button>
         <button class="btn" id="ec-chords" disabled>🎸 コード候補</button>
+        <button class="btn" id="ec-prog" disabled>🧠 コード進行（曲全体）</button>
         <label>BPM <input type="number" id="ec-bpm" value="120" min="40" max="240"></label>
         <span class="hint" id="ec-busy"></span>
       </div>
       <div id="ec-melody-out" style="margin-top:8px"></div>
       <div id="ec-chords-out" style="margin-top:8px"></div>
+      <div id="ec-prog-out" style="margin-top:8px"></div>
     </div>
   `;
 
@@ -117,6 +120,7 @@ export function init(el) {
   });
   $('#ec-melody').addEventListener('click', analyzeMelody);
   $('#ec-chords').addEventListener('click', analyzeChords);
+  $('#ec-prog').addEventListener('click', analyzeProgression);
 
   const wave = $('#ec-wave');
   wave.addEventListener('pointerdown', onWaveDown);
@@ -148,7 +152,7 @@ async function loadAudioFile(file) {
     computePeaks();
     drawWave();
     updateAB();
-    for (const id of ['#ec-play', '#ec-to-a', '#ec-set-a', '#ec-set-b', '#ec-clear-ab', '#ec-melody', '#ec-chords']) {
+    for (const id of ['#ec-play', '#ec-to-a', '#ec-set-a', '#ec-set-b', '#ec-clear-ab', '#ec-melody', '#ec-chords', '#ec-prog']) {
       panel.querySelector(id).disabled = false;
     }
     panel.querySelector('#ec-file-name').textContent = `${fileName}（${fmt(audioBuffer.duration)}）`;
@@ -535,6 +539,68 @@ function analyzeChords() {
     `;
     busy('');
   }, 30);
+}
+
+// ---- コード進行トラッカー（曲全体）----
+
+let progResult = null;
+
+async function analyzeProgression() {
+  if (!monoData) return;
+  const btn = panel.querySelector('#ec-prog');
+  btn.disabled = true;
+  try {
+    const res = await trackChords(monoData, audioBuffer.sampleRate, {
+      onProgress: (p) => busy(`コード進行を解析中… ${Math.round(p * 100)}%`),
+    });
+    progResult = res;
+    renderProg(res);
+  } catch (e) {
+    panel.querySelector('#ec-prog-out').innerHTML = `<p class="hint">解析エラー: ${e.message}</p>`;
+  } finally {
+    btn.disabled = false;
+    busy('');
+  }
+}
+
+function renderProg(res) {
+  const out = panel.querySelector('#ec-prog-out');
+  if (!res || res.segments.length === 0) {
+    out.innerHTML = '<p class="hint">コード進行を解析できませんでした（音が薄い/短すぎる可能性）</p>';
+    return;
+  }
+  const keyLabel = pcName(res.key.tonic, res.useFlat) + (res.key.mode === 'minor' ? 'm' : '');
+  out.innerHTML = `
+    <p class="hint">推定テンポ ${res.bpm} BPM ・ キー ${keyLabel} ・ ${res.segments.length}区間。ブロックをタップで頭出し＋A-Bループ設定</p>
+    <div class="prog-strip">${res.segments.map((s, i) => `
+      <div class="prog-block" data-i="${i}" style="min-width:${Math.max(38, Math.round((s.end - s.start) * 24))}px">
+        <b>${s.chord}</b>${s.hint ? `<span class="prog-hint">${s.hint}</span>` : ''}
+        <small>${fmt(s.start)}</small>
+      </div>`).join('')}
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn primary" id="ec-prog-send">📝 コード譜タブへ送る</button>
+      <span class="hint">自動解析は候補です。仕上げはあなたの耳で</span>
+    </div>`;
+  out.querySelectorAll('.prog-block').forEach((el) =>
+    el.addEventListener('click', () => {
+      const s = res.segments[Number(el.dataset.i)];
+      loopA = s.start;
+      loopB = s.end;
+      updateAB();
+      if (audioEl) audioEl.currentTime = s.start;
+      out.querySelectorAll('.prog-block').forEach((x) => x.classList.toggle('active', x === el));
+    })
+  );
+  out.querySelector('#ec-prog-send').addEventListener('click', () => {
+    const lines = [];
+    for (let i = 0; i < res.segments.length; i += 4) {
+      lines.push(res.segments.slice(i, i + 4).map((s) => `[${s.chord}]`).join(' '));
+    }
+    const text = lines.join('\n') +
+      `\n\n※「${fileName}」の自動解析（BPM ${res.bpm}・キー ${keyLabel}）。候補なので耳で最終確認を`;
+    window.msBridge.send('chords', 'analyzed', { title: `${fileName} のコード進行`, text });
+  });
 }
 
 export function activate() {

@@ -51,39 +51,69 @@ export const OPEN_SHAPES = {
   'Dsus4': { frets: [-1, -1, 0, 2, 3, 3], ease: 9 },
   'Esus4': { frets: [0, 2, 2, 2, 0, 0], ease: 9 },
   'Cadd9': { frets: [-1, 3, 2, 0, 3, 0], ease: 8 },
+  // 6th系（ボサノヴァ・ジャズで頻出のオープン形）
+  'C6': { frets: [-1, 3, 2, 2, 1, 0], ease: 7 },
+  'G6': { frets: [3, 2, 0, 0, 0, 0], ease: 9 },
+  'D6': { frets: [-1, -1, 0, 2, 0, 2], ease: 8 },
+  'A6': { frets: [-1, 0, 2, 2, 2, 2], ease: 6 },
+  'Am6': { frets: [-1, 0, 2, 2, 1, 2], ease: 7 },
+  'Dm6': { frets: [-1, -1, 0, 2, 0, 1], ease: 8 },
+  'Em6': { frets: [0, 2, 2, 0, 2, 0], ease: 8 },
   // その他
   'Ddim7': { frets: [-1, -1, 0, 1, 0, 1], ease: 6 },
   'E5': { frets: [0, 2, 2, -1, -1, -1], ease: 9 },
   'A5': { frets: [-1, 0, 2, 2, -1, -1], ease: 9 },
 };
 
-// 可動（バレー）フォーム。値はバレー位置からの相対フレット
+// 可動フォーム。rel: null=ミュート、数値=基準位置からの相対フレット（負もあり）
+// barre:false はジャズ/ボサノヴァ定番のコンパクト4声ボイシング（drop系）で、優先的に使う
 const MOVABLE_FORMS = [
   {
-    rootPc: 4, // E フォーム（ルート6弦）
-    barreFrom: 0,
+    rootPc: 4, barre: false, // ルート6弦 drop3
     shapes: {
-      '': [0, 2, 2, 1, 0, 0],
-      'm': [0, 2, 2, 0, 0, 0],
-      '7': [0, 2, 0, 1, 0, 0],
-      'm7': [0, 2, 0, 0, 0, 0],
-      'maj7': [0, 2, 1, 1, 0, 0],
-      'sus4': [0, 2, 2, 2, 0, 0],
-      '7sus4': [0, 2, 0, 2, 0, 0],
-      '5': [0, 2, 2, -1, -1, -1],
+      'maj7': [0, null, 1, 1, 0, null],
+      '7': [0, null, 0, 1, 0, null],
+      'm7': [0, null, 0, 0, 0, null],
+      'm7b5': [0, null, 0, 0, -1, null],
+      'dim7': [0, null, -1, 0, -1, null],
+      '6': [0, null, -1, 1, 0, null],
+      '13': [0, null, 0, 1, 2, null],
     },
   },
   {
-    rootPc: 9, // A フォーム（ルート5弦）
-    barreFrom: 1,
+    rootPc: 9, barre: false, // ルート5弦 drop2
     shapes: {
-      '': [-1, 0, 2, 2, 2, 0],
-      'm': [-1, 0, 2, 2, 1, 0],
-      '7': [-1, 0, 2, 0, 2, 0],
-      'm7': [-1, 0, 2, 0, 1, 0],
-      'maj7': [-1, 0, 2, 1, 2, 0],
-      'sus4': [-1, 0, 2, 2, 3, 0],
-      '5': [-1, 0, 2, 2, -1, -1],
+      'maj7': [null, 0, 2, 1, 2, null],
+      '7': [null, 0, 2, 0, 2, null],
+      'm7': [null, 0, 2, 0, 1, null],
+      'm7b5': [null, 0, 1, 0, 1, null],
+      'dim7': [null, 0, 1, -1, 1, null],
+      '9': [null, 0, -1, 0, 0, null],
+      'm9': [null, 0, -2, 0, 0, null],
+      '7b9': [null, 0, -1, 0, -1, null],
+      '13': [null, 0, -1, 0, 2, null],
+      '6': [null, 0, 2, 2, 2, 2],
+      'm6': [null, 0, 2, 2, 1, 2],
+      'mmaj7': [null, 0, 2, 1, 1, null],
+    },
+  },
+  {
+    rootPc: 4, barre: true, // E フォーム（フルバレー）
+    shapes: {
+      '': [0, 2, 2, 1, 0, 0],
+      'm': [0, 2, 2, 0, 0, 0],
+      'sus4': [0, 2, 2, 2, 0, 0],
+      '7sus4': [0, 2, 0, 2, 0, 0],
+      '5': [0, 2, 2, null, null, null],
+    },
+  },
+  {
+    rootPc: 9, barre: true, // A フォーム（フルバレー）
+    shapes: {
+      '': [null, 0, 2, 2, 2, 0],
+      'm': [null, 0, 2, 2, 1, 0],
+      'sus4': [null, 0, 2, 2, 3, 0],
+      '5': [null, 0, 2, 2, null, null],
     },
   },
 ];
@@ -98,25 +128,30 @@ export function getShape(symbol) {
   const open = OPEN_SHAPES[sharpKey] || OPEN_SHAPES[flatKey];
   if (open) return { ...open, barres: open.barres || [], name: symbol };
 
-  // 可動フォームから最も低い位置を選ぶ
+  // 可動フォームから最も低い位置を選ぶ（同フレットならジャズ形＝配列前方を優先）
   let best = null;
   for (const form of MOVABLE_FORMS) {
-    if (!(p.quality in form.shapes)) continue;
+    const tpl = form.shapes[p.quality];
+    if (!tpl) continue;
     let fret = (((p.root - form.rootPc) % 12) + 12) % 12;
-    if (fret === 0) fret = 12;
-    if (!best || fret < best.fret) best = { fret, form };
+    const rels = tpl.filter((f) => f !== null);
+    const minRel = Math.min(...rels);
+    if (fret + minRel < 0) fret += 12;       // 相対マイナスがはみ出す位置は1オクターブ上へ
+    if (fret === 0 && form.barre) fret = 12; // 0フレットのフルバレーは意味がない
+    if (fret + Math.max(...rels) > 15) continue;
+    if (!best || fret < best.fret) best = { fret, form, tpl };
   }
   if (!best) return null;
 
-  const tpl = best.form.shapes[p.quality];
-  const frets = tpl.map((f) => (f < 0 ? -1 : f + best.fret));
-  const ease = best.fret <= 3 ? 4 : best.fret <= 7 ? 3 : 2;
-  return {
-    frets,
-    barres: [{ fret: best.fret, from: best.form.barreFrom, to: 5 }],
-    ease,
-    name: symbol,
-  };
+  const frets = best.tpl.map((f) => (f === null ? -1 : f + best.fret));
+  const played = best.tpl.map((f, i) => (f !== null ? i : -1)).filter((i) => i >= 0);
+  const barres = best.form.barre
+    ? [{ fret: best.fret, from: played[0], to: played[played.length - 1] }]
+    : [];
+  const ease = best.form.barre
+    ? (best.fret <= 3 ? 4 : best.fret <= 7 ? 3 : 2)
+    : (best.fret <= 5 ? 5 : best.fret <= 9 ? 4 : 3);
+  return { frets, barres, ease, name: symbol };
 }
 
 export function easeScore(symbol) {

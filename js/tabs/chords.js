@@ -480,6 +480,17 @@ function applyTranspose() {
   render();
 }
 
+// 耳コピタブの「コード進行解析」からの受信
+export function receive(key, value) {
+  if (key !== 'analyzed') return;
+  state = { ...state, songId: null, title: value.title, text: value.text, transpose: 0, capo: 0 };
+  panel.querySelector('#ch-title').value = state.title;
+  panel.querySelector('#ch-text').value = state.text;
+  panel.querySelector('#ch-capo').value = '0';
+  refreshSongSelect();
+  render();
+}
+
 export function deactivate() {
   if (playTimer) {
     clearTimeout(playTimer);
