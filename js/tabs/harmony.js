@@ -192,6 +192,7 @@ function refresh() {
   }
 
   panel.querySelector('#hm-play-orig').disabled = !(importMeta && window.msBridge.data.earcopyAudio);
+  window.msBridge.data.harmonyMelody = { notes: melody.map((n) => ({ ...n })), bpm };
   panel.querySelector('#hm-info').textContent = melody.length ? `${melody.length}音 / キー ${pcName(keyEst.tonic)}${keyEst.mode === 'minor' ? 'm' : ''}` : '';
   drawRoll();
   drawStaff();

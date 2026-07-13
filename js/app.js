@@ -5,6 +5,7 @@ const TABS = [
   { id: 'chords', label: '🎸 コード' },
   { id: 'earcopy', label: '🎧 耳コピ' },
   { id: 'harmony', label: '🎤 ハモリ' },
+  { id: 'piano', label: '🎹 ピアノ' },
   { id: 'tab', label: '📝 タブ譜' },
 ];
 

@@ -98,6 +98,86 @@ export function chordCandidates(chroma, topN = 5) {
   return results.slice(0, topN);
 }
 
+// 複音スケッチ採譜（実験的）: 窓ごとにスペクトルのピークを強い順に拾い、
+// その倍音列を減衰させながら最大 maxVoices 音まで抽出する。
+// ポリフォニック完全採譜ではなく「鳴っている主要音のスケッチ」。
+export function sketchNotes(data, sampleRate, opts = {}) {
+  const { winSec = 0.25, maxVoices = 5, fmin = 45, fmax = 2200, minDur = 0.13 } = opts;
+  const factor = Math.max(1, Math.round(sampleRate / 22050));
+  const ds = factor > 1 ? (() => {
+    const out = new Float32Array(Math.floor(data.length / factor));
+    for (let i = 0; i < out.length; i++) {
+      let s = 0;
+      for (let j = 0; j < factor; j++) s += data[i * factor + j];
+      out[i] = s / factor;
+    }
+    return out;
+  })() : data;
+  const sr = sampleRate / factor;
+  const fftSize = 8192;
+  const hop = Math.max(1024, Math.round(winSec * sr));
+  const win = hannWindow(fftSize);
+  const kLo = Math.max(2, Math.floor((fmin * fftSize) / sr));
+  const kHi = Math.min(fftSize / 2 - 4, Math.ceil((fmax * fftSize) / sr));
+
+  const frames = [];
+  for (let pos = 0; pos + fftSize <= ds.length; pos += hop) {
+    const mag = spectrum(ds.subarray(pos, pos + fftSize), win);
+    let initMax = 0;
+    for (let k = kLo; k <= kHi; k++) if (mag[k] > initMax) initMax = mag[k];
+    const midis = [];
+    if (initMax > 1e-6) {
+      const res = Float32Array.from(mag);
+      for (let v = 0; v < maxVoices; v++) {
+        let km = kLo;
+        for (let k = kLo; k <= kHi; k++) if (res[k] > res[km]) km = k;
+        if (res[km] < 0.2 * initMax) break;
+        // 放物線補間で周波数を精密化
+        const a = res[km - 1], b = res[km], c = res[km + 1];
+        const d = a - 2 * b + c;
+        const kf = d !== 0 ? km + (0.5 * (a - c)) / d : km;
+        const f = (kf * sr) / fftSize;
+        const midi = Math.round(69 + 12 * Math.log2(f / 440));
+        if (midi >= 24 && midi <= 96 && !midis.includes(midi)) midis.push(midi);
+        // この音の倍音列を減衰
+        for (let h = 1; h <= 10; h++) {
+          const kb = Math.round(kf * h);
+          if (kb > kHi + 8) break;
+          for (let j = -2; j <= 2; j++) {
+            const idx = kb + j;
+            if (idx >= 0 && idx < res.length) res[idx] *= h === 1 ? 0.03 : 0.3;
+          }
+        }
+      }
+    }
+    frames.push({ t: (pos + fftSize / 2) / sr, midis });
+  }
+
+  // フレーム間で同じ音をつなげてノート化
+  const notes = [];
+  const active = new Map(); // midi → {start, lastT}
+  const frameDur = hop / sr;
+  for (const fr of frames) {
+    for (const m of fr.midis) {
+      if (active.has(m)) active.get(m).lastT = fr.t;
+      else active.set(m, { start: fr.t - frameDur / 2, lastT: fr.t });
+    }
+    for (const [m, info] of [...active]) {
+      if (!fr.midis.includes(m)) {
+        const dur = info.lastT + frameDur / 2 - info.start;
+        if (dur >= minDur) notes.push({ midi: m, start: info.start, dur });
+        active.delete(m);
+      }
+    }
+  }
+  for (const [m, info] of active) {
+    const dur = info.lastT + frameDur / 2 - info.start;
+    if (dur >= minDur) notes.push({ midi: m, start: info.start, dur });
+  }
+  notes.sort((a, b) => a.start - b.start || a.midi - b.midi);
+  return notes;
+}
+
 // 区間を等分してそれぞれのコード候補トップを返す
 export function chordSegments(data, sampleRate, nSeg) {
   const segLen = Math.floor(data.length / nSeg);

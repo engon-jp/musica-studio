@@ -249,6 +249,7 @@ function ensureGraph() {
     getEl: () => audioEl,
     getLoop: () => ({ a: loopA, b: loopB }),
     getName: () => fileName,
+    getMono: () => (monoData ? { data: monoData, sr: audioBuffer.sampleRate, a: loopA, b: loopB } : null),
   };
 }
 
@@ -554,6 +555,13 @@ async function analyzeProgression() {
       onProgress: (p) => busy(`コード進行を解析中… ${Math.round(p * 100)}%`),
     });
     progResult = res;
+    if (res) {
+      window.msBridge.data.progression = {
+        segments: res.segments.map((s) => ({ chord: s.chord, beats: s.beats })),
+        bpm: res.bpm,
+        file: fileName,
+      };
+    }
     renderProg(res);
   } catch (e) {
     panel.querySelector('#ec-prog-out').innerHTML = `<p class="hint">解析エラー: ${e.message}</p>`;

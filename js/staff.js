@@ -45,11 +45,12 @@ export function staffStepToMidi(step, tonic = 0, mode = 'major') {
 }
 
 // voices: [{ notes: [{midi, start(拍), dur(拍)}], color, name }]
+// opts.clef: 'treble'（ト音・既定）| 'bass'（ヘ音）。opts.minBeats で複数譜表の幅を揃える
 // 戻り値: SVG文字列。root に data-x0 / data-ppb（再生ヘッド位置計算用）
 export function renderStaffSVG(voices, opts = {}) {
   const {
-    tonic = 0, mode = 'major',
-    beatsPerBar = 4, pxPerBeat = 48, gap = 9,
+    tonic = 0, mode = 'major', clef = 'treble',
+    beatsPerBar = 4, pxPerBeat = 48, gap = 9, minBeats = 0,
     textColor = '#46403a', lineColor = '#b7ab99',
   } = opts;
 
@@ -58,13 +59,17 @@ export function renderStaffSVG(voices, opts = {}) {
   const scale = mode === 'minor' ? MINOR_SCALE : MAJOR_SCALE;
   const scaleSet = new Set(scale.map((iv) => (tonic + iv) % 12));
 
+  // 譜表の下線/上線ステップ（ト音: E4=30〜F5=38 ／ ヘ音: G2=18〜A3=26）
+  const staffBottom = clef === 'bass' ? 18 : 30;
+  const staffTop = staffBottom + 8;
+
   const all = voices.flatMap((v) => v.notes);
   const lastBeat = all.length ? Math.max(...all.map((n) => n.start + n.dur)) : beatsPerBar;
-  const totalBeats = Math.max(beatsPerBar, Math.ceil(lastBeat / beatsPerBar) * beatsPerBar);
+  const totalBeats = Math.max(minBeats, beatsPerBar, Math.ceil(lastBeat / beatsPerBar) * beatsPerBar);
 
   const steps = all.map((n) => midiToStaff(n.midi, useFlat).step);
-  const topStep = Math.max(42, (steps.length ? Math.max(...steps) : 38) + 3);
-  const bottomStep = Math.min(26, (steps.length ? Math.min(...steps) : 30) - 3);
+  const topStep = Math.max(staffTop + 4, (steps.length ? Math.max(...steps) : staffTop) + 3);
+  const bottomStep = Math.min(staffBottom - 4, (steps.length ? Math.min(...steps) : staffBottom) - 3);
 
   const topMargin = 14, bottomMargin = 12;
   const yOf = (step) => topMargin + ((topStep - step) * gap) / 2;
@@ -76,22 +81,27 @@ export function renderStaffSVG(voices, opts = {}) {
 
   let s = '';
 
-  // 五線（E4=30 〜 F5=38）
-  for (let st = 30; st <= 38; st += 2) {
+  // 五線
+  for (let st = staffBottom; st <= staffTop; st += 2) {
     s += `<line x1="4" y1="${yOf(st)}" x2="${W - 4}" y2="${yOf(st)}" stroke="${lineColor}" stroke-width="1"/>`;
   }
   // 小節線
   for (let b = 0; b <= totalBeats; b += beatsPerBar) {
     const x = xOf(b) - pxPerBeat * 0.18;
-    s += `<line x1="${x}" y1="${yOf(38)}" x2="${x}" y2="${yOf(30)}" stroke="${lineColor}" stroke-width="${b === 0 || b === totalBeats ? 1.8 : 1}"/>`;
+    s += `<line x1="${x}" y1="${yOf(staffTop)}" x2="${x}" y2="${yOf(staffBottom)}" stroke="${lineColor}" stroke-width="${b === 0 || b === totalBeats ? 1.8 : 1}"/>`;
   }
-  // ト音記号（システムフォントの記譜グリフ）
-  s += `<text x="8" y="${yOf(32) + gap * 1.6}" font-size="${gap * 5}" fill="${textColor}">𝄞</text>`;
-  // 調号
+  // 音部記号（システムフォントの記譜グリフ）
+  if (clef === 'bass') {
+    s += `<text x="10" y="${yOf(staffTop - 2) + gap * 1.5}" font-size="${gap * 3.9}" fill="${textColor}">𝄢</text>`;
+  } else {
+    s += `<text x="8" y="${yOf(32) + gap * 1.6}" font-size="${gap * 5}" fill="${textColor}">𝄞</text>`;
+  }
+  // 調号（ヘ音記号は各位置が2オクターブ−1度＝14ステップ下）
+  const clefShift = clef === 'bass' ? 14 : 0;
   const sigSteps = useFlat ? FLAT_STEPS : SHARP_STEPS;
   const sigGlyph = useFlat ? '♭' : '♯';
   for (let i = 0; i < ks.count; i++) {
-    s += `<text x="${16 + gap * 4.6 + i * gap * 1.15}" y="${yOf(sigSteps[i]) + gap * 0.42}" font-size="${gap * 2.2}" fill="${textColor}" text-anchor="middle">${sigGlyph}</text>`;
+    s += `<text x="${16 + gap * 4.6 + i * gap * 1.15}" y="${yOf(sigSteps[i] - clefShift) + gap * 0.42}" font-size="${gap * 2.2}" fill="${textColor}" text-anchor="middle">${sigGlyph}</text>`;
   }
 
   // 音符（voices 順に描画 = 後のボイスが上に載る）
@@ -102,12 +112,12 @@ export function renderStaffSVG(voices, opts = {}) {
       const hx = xOf(n.start) + headRx;
       const hy = yOf(step);
 
-      // 加線（下は C4=28 から、上は A5=40 から音符位置まで）
-      if (step <= 28) {
-        for (let st = 28; st >= step; st -= 2) s += ledger(hx, yOf(st), gap, lineColor);
+      // 加線（譜表の外側の偶数ステップに音符位置まで）
+      if (step <= staffBottom - 2) {
+        for (let st = staffBottom - 2; st >= step; st -= 2) s += ledger(hx, yOf(st), gap, lineColor);
       }
-      if (step >= 40) {
-        for (let st = 40; st <= step; st += 2) s += ledger(hx, yOf(st), gap, lineColor);
+      if (step >= staffTop + 2) {
+        for (let st = staffTop + 2; st <= step; st += 2) s += ledger(hx, yOf(st), gap, lineColor);
       }
 
       // 臨時記号（スケール外の音のみ。調号でカバーされる音は省略）
@@ -124,7 +134,7 @@ export function renderStaffSVG(voices, opts = {}) {
 
       // 符幹と旗（全音符は幹なし）
       if (n.dur < 4) {
-        const up = step < 34;
+        const up = step < staffBottom + 4;
         const sx = up ? hx + headRx * 0.88 : hx - headRx * 0.88;
         const sy1 = hy + (up ? -1 : 1) * headRy * 0.4;
         const sy2 = hy + (up ? -1 : 1) * gap * 3.1;

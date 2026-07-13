@@ -90,3 +90,36 @@ export function voiceNote(freq, when, dur, { gain = 0.25, dest = null } = {}) {
 export function voiceMidi(midi, when, dur, opts = {}) {
   return voiceNote(midiToFreq(midi), when, dur, opts);
 }
+
+// ピアノ風トーン（加算合成: 減衰する数本の倍音＋鋭いアタック）
+export function pianoNote(midi, when, dur, { gain = 0.26, dest = null } = {}) {
+  const ctx = getCtx();
+  const t0 = when || ctx.currentTime;
+  const f = midiToFreq(midi);
+  const out = ctx.createGain();
+  out.gain.setValueAtTime(0, t0);
+  out.gain.linearRampToValueAtTime(gain, t0 + 0.006);
+  const decay = Math.max(0.35, Math.min(2.5, dur * 1.4));
+  out.gain.setTargetAtTime(0.0001, t0 + 0.02, decay / 3);
+  out.gain.setTargetAtTime(0.0001, t0 + dur, 0.06); // 離鍵
+  out.connect(dest || ctx.destination);
+
+  const partials = [
+    [1, 1.0], [2, 0.45], [3, 0.22], [4, 0.1], [5.04, 0.05],
+  ];
+  const oscs = [];
+  for (const [k, a] of partials) {
+    if (f * k > 9000) continue;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = f * k;
+    const g = ctx.createGain();
+    g.gain.value = a;
+    o.connect(g);
+    g.connect(out);
+    o.start(t0);
+    o.stop(t0 + dur + 1.2);
+    oscs.push(o);
+  }
+  return { stop: (t = 0) => oscs.forEach((o) => { try { o.stop(t); } catch { /* 停止済み */ } }) };
+}

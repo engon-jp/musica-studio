@@ -344,5 +344,73 @@ console.log('--- コード進行トラッカー ---');
     `キー推定は C major か A minor（got ${res.key.tonic} ${res.key.mode}）`);
 }
 
+console.log('--- ピアノアレンジャー ---');
+{
+  const { parseProgressionText, arrangePiano, nearestVoicing } = await import('../js/arranger.js');
+  const prog = parseProgressionText('C Am\nDm7,G7 C');
+  eq(prog.map((c) => `${c.symbol}:${c.beats}`).join(' '), 'C:4 Am:4 Dm7:2 G7:2 C:4', '進行テキストのパース');
+
+  const a1 = arrangePiano(prog, null, 'simple');
+  eq(a1.totalBeats, 16, '4小節=16拍');
+  eq(a1.lh[0].midi, 36, 'LH先頭は C2');
+  ok(a1.rh.length >= 12, 'RHコンピングが生成される');
+  ok(a1.rh.every((n) => n.midi >= 55 && n.midi <= 84), 'RHは中音域に収まる');
+
+  const a2 = arrangePiano(parseProgressionText('C'), null, 'ballad');
+  eq(a2.lh.length, 8, 'バラードLHは8分アルペジオ8音');
+  eq(a2.lh.map((n) => n.start).join(','), '0,0.5,1,1.5,2,2.5,3,3.5', 'アルペジオのタイミング');
+
+  const a3 = arrangePiano(parseProgressionText('C'), null, 'bossa');
+  eq(a3.lh.map((n) => n.start).join(','), '0,1.5,2,3.5', 'ボサノヴァのベースパターン');
+  eq(a3.lh.map((n) => n.midi).join(','), '36,43,36,43', 'ルートと5度');
+
+  const a4 = arrangePiano(parseProgressionText('C/G'), null, 'simple');
+  eq(a4.lh[0].midi, 43, 'オンコード C/G は G をベースに');
+
+  const mel = [{ midi: 72, start: 0, dur: 2 }, { midi: 71, start: 2, dur: 2 }];
+  const a5 = arrangePiano(parseProgressionText('C G'), mel, 'ballad');
+  ok(a5.rh.length === 2 && a5.rh[0].midi === 72, 'メロディ指定時はRH=メロディ');
+  ok(a5.lh.length === 16, 'メロディ時もLHパターンは生成');
+
+  // ボイスリーディング: C→Am の移動量が小さい
+  const v1 = nearestVoicing([0, 4, 7], null);
+  const v2 = nearestVoicing([9, 0, 4], v1);
+  const move = v2.reduce((s, m) => s + Math.min(...v1.map((p) => Math.abs(m - p))), 0);
+  ok(move <= 5, `ボイスリーディングの移動量が小さい（got ${move}）`);
+}
+
+console.log('--- 複音スケッチ採譜 ---');
+{
+  const { sketchNotes } = await import('../js/dsp.js');
+  // C3 + E4 + G4（G4はC3の第3倍音と重なる嫌なケース）を1秒
+  const freqs = [130.81, 329.63, 392.0];
+  const len = SR;
+  const d = new Float32Array(len);
+  for (const f of freqs) {
+    for (let h = 1; h <= 4; h++) {
+      for (let i = 0; i < len; i++) d[i] += (0.3 / h) * Math.sin((2 * Math.PI * f * h * i) / SR);
+    }
+  }
+  const notes = sketchNotes(d, SR);
+  const midis = [...new Set(notes.map((n) => n.midi))].sort((a, b) => a - b);
+  ok([48, 64, 67].every((m) => midis.includes(m)), `C3/E4/G4 を検出（got ${midis.join(',')}）`);
+  ok(midis.length <= 6, `過剰検出しない（got ${midis.length}音）`);
+}
+
+console.log('--- 五線譜: ヘ音記号 ---');
+{
+  const { renderStaffSVG } = await import('../js/staff.js');
+  const svg = renderStaffSVG(
+    [{ notes: [{ midi: 36, start: 0, dur: 1 }, { midi: 48, start: 1, dur: 1 }, { midi: 60, start: 2, dur: 1 }], color: '#000', name: 'LH' }],
+    { tonic: 0, clef: 'bass' }
+  );
+  ok(svg.includes('𝄢'), 'ヘ音記号を含む');
+  eq((svg.match(/<ellipse/g) || []).length, 3, '符頭3つ');
+  const svgG = renderStaffSVG([{ notes: [{ midi: 43, start: 0, dur: 1 }], color: '#000', name: 'x' }], { tonic: 7, clef: 'bass' });
+  ok(svgG.includes('♯'), 'ヘ音記号でも調号が出る');
+  const svgW = renderStaffSVG([{ notes: [{ midi: 60, start: 0, dur: 1 }], color: '#000', name: 'x' }], { minBeats: 32 });
+  ok(Number(/width="(\d+)"/.exec(svgW)[1]) > 1500, 'minBeats で幅が揃えられる');
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
