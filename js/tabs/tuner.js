@@ -1,6 +1,6 @@
 // チューナータブ
 
-import { startMic, stopMic, micActive, getCtx } from '../audio-engine.js';
+import { startMic, stopMic, micActive, getCtx, listAudioInputs, currentMicLabel } from '../audio-engine.js';
 import { detectPitch } from '../pitch.js';
 import { freqToNote, midiToFreq, midiToName } from '../theory.js';
 import { pluckMidi } from '../synth.js';
@@ -37,6 +37,18 @@ export function init(el) {
         <label>A4 <input type="number" id="tn-a4" value="440" min="415" max="466"> Hz</label>
         <button class="btn primary" id="tn-toggle">🎙 マイク開始</button>
       </div>
+      <div class="row" id="tn-device-row" style="display:none">
+        <label>マイク
+          <select id="tn-device"></select>
+        </label>
+        <span class="hint" id="tn-level-hint"></span>
+      </div>
+      <div class="row" id="tn-meter-row" style="display:none; align-items:center; gap:8px">
+        <span class="hint" style="min-width:3.5em">入力</span>
+        <div style="flex:1; height:10px; background:var(--bg-input); border-radius:5px; overflow:hidden">
+          <div id="tn-level" style="height:100%; width:0%; background:var(--green); transition:width 0.06s linear"></div>
+        </div>
+      </div>
     </div>
     <div class="card tuner-display">
       <div class="tuner-note" id="tn-note">–</div>
@@ -58,19 +70,21 @@ export function init(el) {
   panel.querySelector('#tn-a4').addEventListener('change', (e) => {
     a4 = Math.min(466, Math.max(415, Number(e.target.value) || 440));
   });
-  panel.querySelector('#tn-toggle').addEventListener('click', toggleMic);
+  panel.querySelector('#tn-toggle').addEventListener('click', () => toggleMic());
+  panel.querySelector('#tn-device').addEventListener('change', (e) => switchDevice(e.target.value));
 }
 
-async function toggleMic() {
+async function toggleMic(deviceId = null) {
   const btn = panel.querySelector('#tn-toggle');
-  if (micActive()) {
+  if (micActive() && deviceId === null) {
     stopLoop();
     btn.textContent = '🎙 マイク開始';
     btn.classList.add('primary');
+    panel.querySelector('#tn-meter-row').style.display = 'none';
     return;
   }
   try {
-    const source = await startMic();
+    const source = await startMic(deviceId);
     const ctx = getCtx();
     analyser = ctx.createAnalyser();
     analyser.fftSize = 2048;
@@ -78,11 +92,51 @@ async function toggleMic() {
     buf = new Float32Array(analyser.fftSize);
     btn.textContent = '⏹ 停止';
     btn.classList.remove('primary');
+    panel.querySelector('#tn-meter-row').style.display = 'flex';
+    panel.querySelector('#tn-sub').textContent = '弦を鳴らしてください';
     doneStrings.clear();
+    await populateDevices();
     loop();
   } catch (e) {
-    panel.querySelector('#tn-sub').textContent = `マイクを使用できません: ${e.message}`;
+    panel.querySelector('#tn-sub').textContent = micErrorMessage(e);
   }
+}
+
+function micErrorMessage(e) {
+  switch (e.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'マイクが許可されていません。アドレスバーのマイク許可と、Mac は システム設定→プライバシー→マイク でブラウザを確認してください';
+    case 'NotFoundError':
+      return 'マイクが見つかりません。入力デバイスが接続されているか確認してください';
+    case 'NotReadableError':
+      return '別のアプリがマイクを使用中の可能性があります（Zoom 等を終了してみてください）';
+    case 'OverconstrainedError':
+      return '選択したマイクを使用できませんでした。別のマイクを選んでください';
+    default:
+      return `マイクを使用できません: ${e.name || ''} ${e.message}`;
+  }
+}
+
+// マイク許可後にデバイス一覧を埋める（ラベルは許可後にしか取れない）
+async function populateDevices() {
+  const sel = panel.querySelector('#tn-device');
+  const inputs = await listAudioInputs();
+  if (inputs.length <= 1) {
+    panel.querySelector('#tn-device-row').style.display = 'none';
+    return;
+  }
+  const active = currentMicLabel();
+  sel.innerHTML = inputs
+    .map((d) => `<option value="${d.id}" ${d.label === active ? 'selected' : ''}>${d.label}</option>`)
+    .join('');
+  panel.querySelector('#tn-device-row').style.display = 'flex';
+}
+
+async function switchDevice(deviceId) {
+  if (!micActive()) return;
+  stopLoop();
+  await toggleMic(deviceId);
 }
 
 function stopLoop() {
@@ -97,13 +151,34 @@ function loop() {
   rafId = requestAnimationFrame(loop);
   if (!analyser) return;
   analyser.getFloatTimeDomainData(buf);
+  // 検出とは独立に入力レベルを計り、メーターと診断ヒントに使う
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+  updateLevel(Math.sqrt(sum / buf.length));
   const r = detectPitch(buf, getCtx().sampleRate, {
     minFreq: 55,
     maxFreq: 1700,
     clarityThreshold: 0.86,
-    rmsThreshold: 0.006,
+    rmsThreshold: 0.005,
   });
   render(r);
+}
+
+function updateLevel(rms) {
+  const bar = panel.querySelector('#tn-level');
+  const hint = panel.querySelector('#tn-level-hint');
+  if (!bar) return;
+  // RMS 0〜0.15 くらいを 0〜100% に（対数寄りに見やすく）
+  const pct = Math.min(100, Math.round(Math.sqrt(rms / 0.15) * 100));
+  bar.style.width = pct + '%';
+  bar.style.background = rms < 0.005 ? 'var(--yellow)' : 'var(--green)';
+  if (rms < 0.0008) {
+    hint.textContent = '🔇 このマイクに音が届いていません。別のマイクを選ぶか、内蔵マイクに切り替えてください';
+  } else if (rms < 0.005) {
+    hint.textContent = '音が弱いです。マイクに近づけるか、入力音量を上げてください';
+  } else {
+    hint.textContent = '';
+  }
 }
 
 function median(arr) {
@@ -247,5 +322,6 @@ export function deactivate() {
     const btn = panel.querySelector('#tn-toggle');
     btn.textContent = '🎙 マイク開始';
     btn.classList.add('primary');
+    panel.querySelector('#tn-meter-row').style.display = 'none';
   }
 }

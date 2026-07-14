@@ -16,18 +16,18 @@ export async function resumeCtx() {
 
 let micStream = null;
 let micSource = null;
+let currentDeviceId = null;
 
-export async function startMic() {
+// deviceId を渡すとそのマイクを使う。既に別デバイスで起動中なら切り替える
+export async function startMic(deviceId = null) {
   const c = await resumeCtx();
+  if (micStream && deviceId && deviceId !== currentDeviceId) stopMic();
   if (!micStream) {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-      },
-    });
+    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    if (deviceId) audio.deviceId = { exact: deviceId };
+    micStream = await navigator.mediaDevices.getUserMedia({ audio });
     micSource = c.createMediaStreamSource(micStream);
+    currentDeviceId = deviceId;
   }
   return micSource;
 }
@@ -37,11 +37,27 @@ export function stopMic() {
     for (const t of micStream.getTracks()) t.stop();
     micStream = null;
     micSource = null;
+    currentDeviceId = null;
   }
 }
 
 export function micActive() {
   return micStream !== null;
+}
+
+// 現在掴んでいるマイクのラベル（未起動なら null）
+export function currentMicLabel() {
+  const t = micStream && micStream.getAudioTracks()[0];
+  return t ? t.label : null;
+}
+
+// 入力デバイス一覧。ラベルは一度マイク許可が下りた後にしか埋まらない
+export async function listAudioInputs() {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  return devs
+    .filter((d) => d.kind === 'audioinput')
+    .map((d, i) => ({ id: d.deviceId, label: d.label || `マイク ${i + 1}` }));
 }
 
 export async function decodeFile(file) {
