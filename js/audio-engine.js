@@ -18,17 +18,61 @@ let micStream = null;
 let micSource = null;
 let currentDeviceId = null;
 
-// deviceId を渡すとそのマイクを使う。既に別デバイスで起動中なら切り替える
+async function acquire(deviceId) {
+  const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+  if (deviceId) audio.deviceId = { exact: deviceId };
+  return navigator.mediaDevices.getUserMedia({ audio });
+}
+
+// ユーザーが明示的に選んだマイクを記憶（deviceIdはブラウザ再起動で変わることがあるためラベルも保存）
+export function setPreferredMic(id, label) {
+  localStorage.setItem('ms-mic-pref', JSON.stringify({ id, label }));
+}
+
+// 優先マイクの deviceId を決める: 保存済みの選択 → MacBook等の内蔵マイク → なし(既定)
+// ラベルはマイク許可が一度下りるまで空なので、許可前は null が返る
+async function findPreferredDeviceId() {
+  const inputs = await listAudioInputs();
+  if (inputs.length === 0) return null;
+  let pref = null;
+  try { pref = JSON.parse(localStorage.getItem('ms-mic-pref')); } catch { /* 未設定 */ }
+  if (pref) {
+    const byId = pref.id && inputs.find((d) => d.id === pref.id);
+    if (byId) return byId.id;
+    const byLabel = pref.label && inputs.find((d) => d.label && d.label === pref.label);
+    if (byLabel) return byLabel.id;
+  }
+  const builtin = inputs.find((d) => /macbook|内蔵|built-?in/i.test(d.label));
+  return builtin ? builtin.id : null;
+}
+
+// deviceId を渡すとそのマイクを使う。省略時は「保存済み → 内蔵マイク → 既定」の順で自動選択。
+// 既に別デバイスで起動中なら切り替える
 export async function startMic(deviceId = null) {
   const c = await resumeCtx();
   if (micStream && deviceId && deviceId !== currentDeviceId) stopMic();
-  if (!micStream) {
-    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
-    if (deviceId) audio.deviceId = { exact: deviceId };
-    micStream = await navigator.mediaDevices.getUserMedia({ audio });
-    micSource = c.createMediaStreamSource(micStream);
-    currentDeviceId = deviceId;
+  if (micStream) return micSource;
+
+  let id = deviceId || (await findPreferredDeviceId());
+  try {
+    micStream = await acquire(id);
+  } catch (e) {
+    if (!id) throw e;
+    micStream = await acquire(null); // 保存デバイスが外れている等 → 既定にフォールバック
+    id = null;
   }
+  // 初回はラベル未取得のまま既定を掴むので、許可が下りた今、優先マイクと違えば掴み直す
+  if (!deviceId) {
+    const want = await findPreferredDeviceId();
+    const curId = micStream.getAudioTracks()[0]?.getSettings?.().deviceId;
+    if (want && curId && want !== curId) {
+      for (const t of micStream.getTracks()) t.stop();
+      micStream = await acquire(want);
+      id = want;
+    }
+  }
+  micSource = c.createMediaStreamSource(micStream);
+  currentDeviceId = micStream.getAudioTracks()[0]?.getSettings?.().deviceId || id;
   return micSource;
 }
 
@@ -51,13 +95,13 @@ export function currentMicLabel() {
   return t ? t.label : null;
 }
 
-// 入力デバイス一覧。ラベルは一度マイク許可が下りた後にしか埋まらない
+// 入力デバイス一覧（ラベルは一度マイク許可が下りた後にしか埋まらない。空文字のまま返す）
 export async function listAudioInputs() {
   if (!navigator.mediaDevices?.enumerateDevices) return [];
   const devs = await navigator.mediaDevices.enumerateDevices();
   return devs
     .filter((d) => d.kind === 'audioinput')
-    .map((d, i) => ({ id: d.deviceId, label: d.label || `マイク ${i + 1}` }));
+    .map((d) => ({ id: d.deviceId, label: d.label || '' }));
 }
 
 export async function decodeFile(file) {

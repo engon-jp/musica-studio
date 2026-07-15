@@ -1,6 +1,6 @@
 // 耳コピタブ: 音源再生（A-Bループ・ピッチ保持速度変更・帯域フィルタ）＋解析（メロディ検出・コード候補）
 
-import { getCtx, resumeCtx, decodeFile, toMono, startMic, stopMic } from '../audio-engine.js';
+import { getCtx, resumeCtx, decodeFile, toMono, startMic, stopMic, listAudioInputs, currentMicLabel, setPreferredMic } from '../audio-engine.js';
 import { pitchTrack, framesToNotes, downsample } from '../pitch.js';
 import { midiToName, pcName } from '../theory.js';
 import { chromaOf, chordCandidates, chordSegments } from '../dsp.js';
@@ -34,6 +34,13 @@ export function init(el) {
         <button class="btn" id="ec-demo">🎁 デモ音源で試す</button>
         <input type="file" id="ec-file" accept="audio/*" hidden>
         <span class="hint" id="ec-file-name">mp3 / m4a / wav / aacなど</span>
+      </div>
+      <div class="row" id="ec-mic-row" style="display:none">
+        <label>マイク <select id="ec-mic-dev"></select></label>
+        <span class="hint" style="min-width:2.5em">入力</span>
+        <div style="flex:1; min-width:80px; height:8px; background:var(--bg-input); border-radius:4px; overflow:hidden">
+          <div id="ec-rec-level" style="height:100%; width:0%; background:var(--green); transition:width 0.08s linear"></div>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -182,11 +189,25 @@ async function toggleRec() {
     const silent = ctx.createGain();
     silent.gain.value = 0; // 発火のため destination に繋ぐが無音（ハウリング防止）
     const chunks = [];
+    let silentChunks = 0;
     proc.onaudioprocess = (e) => {
       if (!recState) return;
-      chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      const chunk = new Float32Array(e.inputBuffer.getChannelData(0));
+      chunks.push(chunk);
       const sec = (chunks.length * 4096) / ctx.sampleRate;
       btn.textContent = `⏹ 録音停止（${fmt(sec)}）`;
+      // 入力レベルを可視化（音が来ないマイクを即座に発見できるように）
+      let sum = 0;
+      for (let i = 0; i < chunk.length; i++) sum += chunk[i] * chunk[i];
+      const rms = Math.sqrt(sum / chunk.length);
+      const bar = panel.querySelector('#ec-rec-level');
+      bar.style.width = Math.min(100, Math.round(Math.sqrt(rms / 0.15) * 100)) + '%';
+      bar.style.background = rms < 0.003 ? 'var(--yellow)' : 'var(--green)';
+      silentChunks = rms < 0.0008 ? silentChunks + 1 : 0;
+      if (silentChunks === 12) { // 約1.1秒無音が続いたら警告
+        panel.querySelector('#ec-file-name').textContent =
+          '🔇 このマイクに音が届いていません。上の「マイク」で別のデバイスを選んでください';
+      }
       if (sec >= 90) finishRec(); // 上限90秒
     };
     source.connect(proc);
@@ -194,11 +215,35 @@ async function toggleRec() {
     silent.connect(ctx.destination);
     recState = { proc, silent, chunks };
     btn.textContent = '⏹ 録音停止（0:00.0）';
+    panel.querySelector('#ec-mic-row').style.display = 'flex';
+    await populateMicSelect();
     panel.querySelector('#ec-file-name').textContent =
       '🔴 録音中… 採りたい部分（ギターソロ等）を流してください（最長90秒）';
   } catch (e) {
     panel.querySelector('#ec-file-name').textContent = 'マイクを使用できません: ' + e.message;
   }
+}
+
+async function populateMicSelect() {
+  const sel = panel.querySelector('#ec-mic-dev');
+  const inputs = await listAudioInputs();
+  const active = currentMicLabel();
+  sel.innerHTML = inputs
+    .map((d, i) => `<option value="${d.id}" ${d.label && d.label === active ? 'selected' : ''}>${d.label || `マイク ${i + 1}`}</option>`)
+    .join('');
+  sel.onchange = async () => {
+    setPreferredMic(sel.value, sel.selectedOptions[0]?.textContent || '');
+    if (recState) {
+      // 録音を止めずにマイクだけ差し替える
+      try {
+        const src = await startMic(sel.value);
+        src.connect(recState.proc);
+        panel.querySelector('#ec-file-name').textContent = '🔴 録音中…（マイクを切り替えました）';
+      } catch (e) {
+        panel.querySelector('#ec-file-name').textContent = 'マイク切替に失敗: ' + e.message;
+      }
+    }
+  };
 }
 
 async function finishRec() {
@@ -208,6 +253,7 @@ async function finishRec() {
   try { proc.disconnect(); silent.disconnect(); } catch { /* 既に切断 */ }
   stopMic();
   panel.querySelector('#ec-rec').textContent = '🎙 マイクから録音';
+  panel.querySelector('#ec-mic-row').style.display = 'none';
   const total = chunks.reduce((s, c) => s + c.length, 0);
   const sr = getCtx().sampleRate;
   if (total < sr * 0.5) {

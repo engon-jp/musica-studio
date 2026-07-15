@@ -1,6 +1,6 @@
 // チューナータブ
 
-import { startMic, stopMic, micActive, getCtx, listAudioInputs, currentMicLabel } from '../audio-engine.js';
+import { startMic, stopMic, micActive, getCtx, listAudioInputs, currentMicLabel, setPreferredMic } from '../audio-engine.js';
 import { detectPitch } from '../pitch.js';
 import { freqToNote, midiToFreq, midiToName } from '../theory.js';
 import { pluckMidi } from '../synth.js';
@@ -128,12 +128,14 @@ async function populateDevices() {
   }
   const active = currentMicLabel();
   sel.innerHTML = inputs
-    .map((d) => `<option value="${d.id}" ${d.label === active ? 'selected' : ''}>${d.label}</option>`)
+    .map((d, i) => `<option value="${d.id}" ${d.label && d.label === active ? 'selected' : ''}>${d.label || `マイク ${i + 1}`}</option>`)
     .join('');
   panel.querySelector('#tn-device-row').style.display = 'flex';
 }
 
 async function switchDevice(deviceId) {
+  const sel = panel.querySelector('#tn-device');
+  setPreferredMic(deviceId, sel.selectedOptions[0]?.textContent || '');
   if (!micActive()) return;
   stopLoop();
   await toggleMic(deviceId);
