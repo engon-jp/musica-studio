@@ -94,22 +94,26 @@ function switchInstrument(next, force = false) {
   refresh();
 }
 
-// 耳コピタブの「ベースライン」受信: notes = [{midi, startBeat, beats}]
+// 耳コピタブからの受信: 'bassline'（ベース4弦）/ 'guitarline'（ギター6弦・ソロ採譜など）
+// notes = [{midi, startBeat, beats}]
 export function receive(key, value) {
-  if (key !== 'bassline') return;
-  instrument = 'bass';
-  panel.querySelector('#tb-inst').value = 'bass';
+  if (key !== 'bassline' && key !== 'guitarline') return;
+  instrument = key === 'bassline' ? 'bass' : 'guitar';
+  panel.querySelector('#tb-inst').value = instrument;
   cells = {};
   selected = null;
+  const tuning = inst().tuning;
+  const lo = tuning[0];
+  const hi = tuning[tuning.length - 1] + 12;
   const maxStep = Math.max(...value.notes.map((n) => (n.startBeat + n.beats) * 4), STEPS_PER_BAR);
   bars = Math.min(32, Math.max(1, Math.ceil(maxStep / STEPS_PER_BAR)));
   let placed = 0;
   for (const n of value.notes) {
-    // ベース音域に収める（オクターブ誤検出の補正）
+    // 楽器の音域に収める（オクターブ誤検出の補正）
     let m = n.midi;
-    while (m > BASS_TUNING[3] + 12) m -= 12;
-    while (m < BASS_TUNING[0]) m += 12;
-    const pos = fretForMidi(m, BASS_TUNING);
+    while (m > hi) m -= 12;
+    while (m < lo) m += 12;
+    const pos = fretForMidi(m, tuning);
     if (!pos) continue;
     const step = Math.round(n.startBeat * 4);
     if (step >= totalSteps()) continue;
@@ -119,7 +123,8 @@ export function receive(key, value) {
   if (value.bpm) panel.querySelector('#tb-bpm').value = value.bpm;
   refresh();
   panel.querySelector('#tb-hint').textContent =
-    `ベースライン ${placed} 音を配置しました（自動採譜は候補です。拍のアタマ単位・最低ポジション運指）。マスをタップして修正できます`;
+    (instrument === 'bass' ? 'ベースライン' : 'メロディ') +
+    ` ${placed} 音を配置しました（自動採譜は候補です。最低ポジション運指）。マスをタップして修正できます`;
 }
 
 function persist() {

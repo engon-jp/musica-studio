@@ -1,6 +1,6 @@
 // 耳コピタブ: 音源再生（A-Bループ・ピッチ保持速度変更・帯域フィルタ）＋解析（メロディ検出・コード候補）
 
-import { getCtx, resumeCtx, decodeFile, toMono } from '../audio-engine.js';
+import { getCtx, resumeCtx, decodeFile, toMono, startMic, stopMic } from '../audio-engine.js';
 import { pitchTrack, framesToNotes, downsample } from '../pitch.js';
 import { midiToName, pcName } from '../theory.js';
 import { chromaOf, chordCandidates, chordSegments } from '../dsp.js';
@@ -30,6 +30,7 @@ export function init(el) {
     <div class="card">
       <div class="row">
         <button class="btn primary" id="ec-file-btn">🎵 音源ファイルを開く</button>
+        <button class="btn" id="ec-rec">🎙 マイクから録音</button>
         <button class="btn" id="ec-demo">🎁 デモ音源で試す</button>
         <input type="file" id="ec-file" accept="audio/*" hidden>
         <span class="hint" id="ec-file-name">mp3 / m4a / wav / aacなど</span>
@@ -101,6 +102,7 @@ export function init(el) {
   $('#ec-file-btn').addEventListener('click', () => $('#ec-file').click());
   $('#ec-file').addEventListener('change', onFile);
   $('#ec-demo').addEventListener('click', makeDemo);
+  $('#ec-rec').addEventListener('click', toggleRec);
   $('#ec-play').addEventListener('click', togglePlay);
   $('#ec-to-a').addEventListener('click', () => { if (audioEl) audioEl.currentTime = loopA ?? 0; });
   $('#ec-set-a').addEventListener('click', () => { loopA = audioEl.currentTime; if (loopB !== null && loopB <= loopA) loopB = null; updateAB(); });
@@ -160,6 +162,65 @@ async function loadAudioFile(file) {
   } catch (err) {
     panel.querySelector('#ec-file-name').textContent = '読み込み失敗: ' + err.message;
   }
+}
+
+// ---- マイク録音（スピーカーで流した曲や自分の演奏を直接キャプチャ）----
+
+let recState = null; // { proc, silent, chunks }
+
+async function toggleRec() {
+  const btn = panel.querySelector('#ec-rec');
+  if (recState) {
+    await finishRec();
+    return;
+  }
+  try {
+    const source = await startMic();
+    const ctx = getCtx();
+    // ScriptProcessor で生PCMを蓄積（非推奨APIだが iOS Safari 含め全対応で確実）
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const silent = ctx.createGain();
+    silent.gain.value = 0; // 発火のため destination に繋ぐが無音（ハウリング防止）
+    const chunks = [];
+    proc.onaudioprocess = (e) => {
+      if (!recState) return;
+      chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      const sec = (chunks.length * 4096) / ctx.sampleRate;
+      btn.textContent = `⏹ 録音停止（${fmt(sec)}）`;
+      if (sec >= 90) finishRec(); // 上限90秒
+    };
+    source.connect(proc);
+    proc.connect(silent);
+    silent.connect(ctx.destination);
+    recState = { proc, silent, chunks };
+    btn.textContent = '⏹ 録音停止（0:00.0）';
+    panel.querySelector('#ec-file-name').textContent =
+      '🔴 録音中… 採りたい部分（ギターソロ等）を流してください（最長90秒）';
+  } catch (e) {
+    panel.querySelector('#ec-file-name').textContent = 'マイクを使用できません: ' + e.message;
+  }
+}
+
+async function finishRec() {
+  if (!recState) return;
+  const { proc, silent, chunks } = recState;
+  recState = null;
+  try { proc.disconnect(); silent.disconnect(); } catch { /* 既に切断 */ }
+  stopMic();
+  panel.querySelector('#ec-rec').textContent = '🎙 マイクから録音';
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const sr = getCtx().sampleRate;
+  if (total < sr * 0.5) {
+    panel.querySelector('#ec-file-name').textContent = '録音が短すぎました（0.5秒以上流してください）';
+    return;
+  }
+  const data = new Float32Array(total);
+  let p = 0;
+  for (const c of chunks) { data.set(c, p); p += c.length; }
+  const file = new File([encodeWav(data, sr)],
+    `マイク録音_${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}.wav`,
+    { type: 'audio/wav' });
+  await loadAudioFile(file);
 }
 
 // ---- デモ音源（その場で合成: 前半きらきら星メロディ／後半 C→Am→F→G）----
@@ -503,6 +564,7 @@ function analyzeMelody() {
         <div class="note-seq">${notes.map((n) => `<span class="note-chip" title="${n.start.toFixed(2)}s">${midiToName(n.midi)}</span>`).join('')}</div>
         <div class="row" style="margin-top:8px">
           <button class="btn primary" id="ec-send-harmony">🎤 ハモリタブへ送る（${notes.length}音）</button>
+          <button class="btn" id="ec-send-tab">📝 ギターのタブ譜へ</button>
         </div>`;
       out.querySelector('#ec-send-harmony').addEventListener('click', () => {
         const bpm = Number(panel.querySelector('#ec-bpm').value) || 120;
@@ -511,6 +573,19 @@ function analyzeMelody() {
           bpm,
           offset: a,
           from: 'earcopy',
+        });
+      });
+      out.querySelector('#ec-send-tab').addEventListener('click', () => {
+        const bpm = Number(panel.querySelector('#ec-bpm').value) || 120;
+        const spb = 60 / bpm;
+        const t0 = notes[0].start;
+        window.msBridge.send('tab', 'guitarline', {
+          notes: notes.map((n) => ({
+            midi: n.midi,
+            startBeat: (n.start - t0) / spb,
+            beats: Math.max(0.25, n.dur / spb),
+          })),
+          bpm,
         });
       });
     }
