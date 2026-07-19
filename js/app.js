@@ -2,6 +2,7 @@
 
 const TABS = [
   { id: 'tuner', label: '🎯 チューナー' },
+  { id: 'metronome', label: '⏱ メトロノーム' },
   { id: 'chords', label: '🎸 コード' },
   { id: 'earcopy', label: '🎧 耳コピ' },
   { id: 'harmony', label: '🎤 ハモリ' },

@@ -421,5 +421,40 @@ console.log('--- 五線譜: ヘ音記号 ---');
   ok(Number(/width="(\d+)"/.exec(svgW)[1]) > 1500, 'minBeats で幅が揃えられる');
 }
 
+console.log('--- メトロノームコア ---');
+{
+  const { tapTempo, trainerNextBpm, defaultBeatStates, cycleBeatState, ticksPerBar, tickKind } =
+    await import('../js/metronome-core.js');
+  eq(tapTempo([0, 500, 1000, 1500]), 120, 'タップ500ms間隔 → 120BPM');
+  eq(tapTempo([0]), null, '1回では判定しない');
+  eq(tapTempo([0, 5000, 5500, 6000]), 120, '2.5秒超のブランクは無視して再計算');
+  eq(tapTempo([0, 750, 1500]), 80, '750ms間隔 → 80BPM');
+
+  eq(trainerNextBpm(100, { inc: 2, every: 4, max: 160 }, 4), 102, '4小節目で+2');
+  eq(trainerNextBpm(100, { inc: 2, every: 4, max: 160 }, 5), 100, '5小節目は据え置き');
+  eq(trainerNextBpm(100, { inc: 2, every: 4, max: 160 }, 0), 100, '0小節では上げない');
+  eq(trainerNextBpm(159, { inc: 5, every: 1, max: 160 }, 1), 160, '上限でクランプ');
+
+  eq(defaultBeatStates(4).join(','), 'accent,on,on,on', '初期状態は1拍目アクセント');
+  eq(cycleBeatState('accent'), 'on', 'accent→on');
+  eq(cycleBeatState('on'), 'mute', 'on→mute');
+  eq(cycleBeatState('mute'), 'accent', 'mute→accent');
+  eq(ticksPerBar(4, 3), 12, '4拍子3連 = 12ティック');
+
+  const { adaptiveAhead } = await import('../js/metronome-core.js');
+  eq(adaptiveAhead(0.025), 0.15, '前面タブ(25ms間隔)では最小先読み150ms');
+  eq(adaptiveAhead(0.5), 1.25, 'スロットリング(500ms間隔)では1.25秒先読み');
+  eq(adaptiveAhead(1.0), 2.5, '1秒間隔でも2.5秒先読みで途切れない');
+  eq(adaptiveAhead(10), 2.5, '先読みは2.5秒でクランプ');
+
+  const st = ['accent', 'mute', 'on', 'on'];
+  eq(tickKind(0, 4, 2, st).sound, 'accent', 'tick0 = アクセント');
+  eq(tickKind(1, 4, 2, st).sound, 'sub', 'tick1 = 裏の刻み');
+  eq(tickKind(2, 4, 2, st).sound, 'mute', 'ミュート拍は鳴らない');
+  eq(tickKind(3, 4, 2, st).sound, 'mute', 'ミュート拍の裏も鳴らない');
+  eq(tickKind(4, 4, 2, st).sound, 'beat', '3拍目は普通のクリック');
+  eq(tickKind(4, 4, 2, st).beatIdx, 2, 'beatIdx の計算');
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

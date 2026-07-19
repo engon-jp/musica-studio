@@ -218,6 +218,40 @@ button.btn:disabled { opacity: 0.45; cursor: default; }
 
 .tuner-strings .string-btn.done { border-color: var(--green); color: var(--green); }
 
+/* ---- メトロノーム ---- */
+
+.metro-bpm {
+  font-size: 64px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.metro-dots {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 16px 0 6px;
+}
+
+.metro-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-input);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.07s ease, box-shadow 0.07s ease;
+}
+
+.metro-dot.on { background: var(--text-dim); border-color: var(--text-dim); }
+.metro-dot.accent { background: var(--accent); border-color: var(--accent); }
+.metro-dot.mute { background: transparent; }
+.metro-dot.now { transform: scale(1.32); box-shadow: 0 0 0 5px var(--accent-soft); }
+
 /* ---- コード ---- */
 
 .cline { display: flex; flex-wrap: wrap; align-items: flex-end; margin: 3px 0; }
