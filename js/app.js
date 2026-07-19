@@ -7,6 +7,7 @@ const TABS = [
   { id: 'earcopy', label: '🎧 耳コピ' },
   { id: 'harmony', label: '🎤 ハモリ' },
   { id: 'piano', label: '🎹 ピアノ' },
+  { id: 'score', label: '🎼 楽譜' },
   { id: 'tab', label: '📝 タブ譜' },
 ];
 

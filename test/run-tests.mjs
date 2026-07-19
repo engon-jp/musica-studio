@@ -456,5 +456,58 @@ console.log('--- メトロノームコア ---');
   eq(tickKind(4, 4, 2, st).beatIdx, 2, 'beatIdx の計算');
 }
 
+console.log('--- 楽譜IO: MIDI読み込み（書き出しとの往復）---');
+{
+  const { buildMidi } = await import('../js/midi.js');
+  const { parseMidi, mergeTies, extractMxlXml } = await import('../js/score-io.js');
+  const src = [
+    { name: 'Melody', notes: [
+      { midi: 60, start: 0, dur: 1 }, { midi: 64, start: 1, dur: 0.5 }, { midi: 67, start: 1, dur: 0.5 },
+      { midi: 72, start: 100, dur: 2 }, // 大きなデルタ（複数バイトVLQ）
+    ] },
+    { name: 'Bass', notes: [{ midi: 36, start: 0, dur: 4 }] },
+  ];
+  const parsed = parseMidi(buildMidi(src, 90));
+  eq(parsed.bpm, 90, 'テンポ往復');
+  eq(parsed.parts.length, 2, '2パート');
+  eq(parsed.parts[0].name, 'Melody', 'トラック名');
+  const m = parsed.parts[0].notes;
+  eq(m.length, 4, 'ノート数');
+  eq(`${m[0].midi}@${m[0].start}x${m[0].dur}`, '60@0x1', '1音目');
+  eq(`${m[1].midi}@${m[1].start}`, '64@1', '和音1');
+  eq(`${m[2].midi}@${m[2].start}`, '67@1', '和音2');
+  eq(`${m[3].midi}@${m[3].start}x${m[3].dur}`, '72@100x2', '長距離VLQ往復');
+
+  // タイ結合
+  const tied = mergeTies([
+    { midi: 60, start: 0, dur: 2, tieStart: true, tieStop: false },
+    { midi: 60, start: 2, dur: 1, tieStart: false, tieStop: true },
+    { midi: 62, start: 3, dur: 1, tieStart: false, tieStop: false },
+  ]);
+  eq(tied.length, 2, 'タイで2音が1音に');
+  eq(`${tied[0].midi}x${tied[0].dur}`, '60x3', '結合後の長さ 2+1=3');
+
+  // MXL(ZIP) 展開: Node の zlib で本物の deflate データを作って検証
+  const { deflateRawSync } = await import('node:zlib');
+  const xml = '<?xml version="1.0"?><score-partwise><part id="P1"/></score-partwise>';
+  const xmlBytes = new TextEncoder().encode(xml);
+  const comp = new Uint8Array(deflateRawSync(Buffer.from(xmlBytes)));
+  const name = new TextEncoder().encode('score.xml');
+  const put16 = (a, o, v) => { a[o] = v & 255; a[o + 1] = (v >> 8) & 255; };
+  const put32 = (a, o, v) => { for (let i = 0; i < 4; i++) a[o + i] = (v >>> (i * 8)) & 255; };
+  const lh = new Uint8Array(30 + name.length + comp.length);
+  put32(lh, 0, 0x04034b50); put16(lh, 8, 8); put32(lh, 18, comp.length); put32(lh, 22, xmlBytes.length);
+  put16(lh, 26, name.length); lh.set(name, 30); lh.set(comp, 30 + name.length);
+  const cd = new Uint8Array(46 + name.length);
+  put32(cd, 0, 0x02014b50); put16(cd, 10, 8); put32(cd, 20, comp.length); put32(cd, 24, xmlBytes.length);
+  put16(cd, 28, name.length); put32(cd, 42, 0); cd.set(name, 46);
+  const eocd = new Uint8Array(22);
+  put32(eocd, 0, 0x06054b50); put16(eocd, 10, 1); put32(eocd, 12, cd.length); put32(eocd, 16, lh.length);
+  const zip = new Uint8Array(lh.length + cd.length + eocd.length);
+  zip.set(lh, 0); zip.set(cd, lh.length); zip.set(eocd, lh.length + cd.length);
+  const extracted = await extractMxlXml(zip);
+  eq(extracted, xml, 'MXL(ZIP+deflate) からXMLを復元');
+}
+
 console.log(`\n結果: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
